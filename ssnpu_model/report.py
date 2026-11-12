@@ -1,11 +1,51 @@
-"""Build serializable timelines and statistics from completed simulation state."""
-from __future__ import annotations
+"""Collect component observations and statistics without changing model state."""
+from collections import Counter, defaultdict
+
+from .components import Cube, Vector, TLSU, Scheduler, TileReg
 
 
-def build_report(*, cycle, nodes, timeline, block_members, source_hashes,
-                 resources, waits, stage_waits, config):
+def build_report(sim):
+    nodes, cycle = sim.nodes, sim.cycle
+    timeline = {k: dict(op_id=k, ir_op=i.raw['ir_op'], core=i.core, pe=i.pe,
+                        queued=0, stages=[], accesses=[], transitions=[]) for k, i in nodes.items()}
+    busy, byte_counts, usage, peak, stage_waits = (Counter() for _ in range(5))
+    waits, observations, storage_events = defaultdict(Counter), [], []
+    instruction_events = []
+    milestones = {'allocation_request', 'allocated', 'issue', 'received', 'operands_ready',
+                  'compute_start', 'compute_end', 'writeback_start', 'writeback_end',
+                  'complete', 'rob_complete', 'retire'}
+    for name, component in sorted(sim.components.items()):
+        observations.extend((time, name, index, key, fields)
+                            for index, (time, key, fields) in enumerate(component.observations))
+        if hasattr(component, 'service'):
+            busy.update(component.service.busy)
+            byte_counts.update(component.service.bytes)
+        if isinstance(component, TileReg):
+            usage.update(component.usage)
+            peak.update(component.peak)
+            storage_events.extend(component.storage_events)
+        if isinstance(component, (Scheduler, TileReg)):
+            for key, counts in component.waits.items():
+                waits[key].update(counts)
+        if isinstance(component, (Cube, Vector, TLSU)):
+            stage_waits.update(component.waits)
+    for time, name, _, key, fields in sorted(observations, key=lambda r: r[:3]):
+        row = timeline[key]
+        for field, value in fields.items():
+            if field in ('stage', 'access'):
+                row['stages' if field == 'stage' else 'accesses'].append(value)
+            else:
+                row[field] = value
+            if field in milestones:
+                i = nodes[key]
+                instruction_events.append(dict(cycle=time, event=field, op_id=key, ir_op=i.raw['ir_op'],
+                                               core=i.core, pe=i.pe, task=i.task, block=i.block,
+                                               thread=i.raw.get('thread_id'), control=i.control, component=name))
+        if 'state' in fields:
+            row['transitions'].append(dict(cycle=time, component=name, state=fields['state']))
     core_end, pe_end, pe_tile_end = {}, {}, {}
     for key, row in timeline.items():
+        row['stages'].sort(key=lambda s: (s['start'], s['resource']))
         core = str(row['core'])
         core_end[core] = max(core_end.get(core, 0), row['complete'])
         if not nodes[key].control:
@@ -13,27 +53,42 @@ def build_report(*, cycle, nodes, timeline, block_members, source_hashes,
             pe_tile_end[pe] = max(pe_tile_end.get(pe, 0), row['complete'])
             pe_end[pe] = max(pe_end.get(pe, 0), row['complete'])
         elif nodes[key].raw['ir_op'] == 'barrier':
-            for c, p in block_members[nodes[key].task, nodes[key].block]:
+            for c, p in sim.trace.block_members[nodes[key].task, nodes[key].block]:
                 pe = f'{c}:{p}'
                 pe_end[pe] = max(pe_end.get(pe, 0), row['complete'])
-    return {'total_cycles': cycle, 'instruction_count': sum(not i.control for i in nodes.values()),
-            'core_completion': core_end, 'pe_completion': pe_end, 'pe_tile_completion': pe_tile_end,
-            'source_sha256': source_hashes,
-            'timeline': list(timeline.values()),
-            'resources': {k: {'service_cycles': v, 'utilization': v / cycle if cycle else 0,
-                              'bytes': resources.bytes[k]} for k, v in sorted(resources.busy.items())},
-            'storage_peak_bytes': dict(resources.peak),
-            'storage_live_bytes': dict(resources.usage),
-            'storage_events': resources.storage_events,
-            'wait_reason_sets': {k: dict(v) for k, v in waits.items()},
-            'internal_stage_resource_wait_cycles': dict(stage_waits),
-            'config': config,
-            'assumptions': [
-                'Synthetic rates; hardware cycle accuracy has not been calibrated.',
-                'Unlimited window/ROB; order_dependencies establish age, not completion.',
-                'Sequential internal stages; private TileReg access included in compute cost.',
-                'Shared reads charged separately per consumer; no broadcast combining.',
-                'Output allocated at issue; fixed slot overwrites await prior readers.',
-                'Views are zero-cost aliases; reuse-only shared versions remain live-out.',
-                'Memory paths use configured costs, without cache residency simulation.',
-                'Wait reason sets count instruction-cycles; overlapping categories are not additive.']}
+    for event in instruction_events:
+        event['execution_component'] = timeline[event['op_id']]['execution_component']
+    report = {
+        'total_cycles': cycle,
+        'last_instruction_complete_cycle': max((r['complete'] for k, r in timeline.items() if not nodes[k].control), default=0),
+        'last_node_complete_cycle': max((r['complete'] for r in timeline.values()), default=0),
+        'instruction_count': sum(not i.control for i in nodes.values()),
+        'core_completion': core_end, 'pe_completion': pe_end, 'pe_tile_completion': pe_tile_end,
+        'source_sha256': sim.trace.source_hashes,
+        'timeline': list(timeline.values()),
+        'instruction_events': instruction_events,
+        'resources': {k: dict(service_cycles=v, utilization=v / cycle if cycle else 0, bytes=byte_counts[k])
+                      for k, v in sorted(busy.items())},
+        'storage_peak_bytes': dict(peak), 'storage_live_bytes': dict(usage),
+        'storage_events': sorted(storage_events, key=lambda e: e['cycle']),
+        'wait_reason_sets': {k: dict(v) for k, v in waits.items()},
+        'internal_stage_resource_wait_cycles': dict(stage_waits),
+        'components': sim.snapshot()['components'],
+        'config': sim.config,
+        'assumptions': [
+            'Synthetic rates; hardware cycle accuracy has not been calibrated.',
+            'Unlimited window/ROB; order_dependencies establish age, not completion.',
+            'Components tick once per cycle; every message is delivered next cycle.',
+            'Ordered operand handshakes; ready commands arbitrate independently by age.',
+            'Private TileReg service included in compute cost; message round trips remain.',
+            'Shared reads charged separately per consumer; no broadcast combining.',
+            'Outputs atomically reserved before dispatch; fixed slots await prior readers.',
+            'Views use messages without tile quota or new storage; reuse-only shared versions remain live-out.',
+            'Completion broadcasts do not wait for in-order thread retirement.',
+            'Total cycles include retirement, consumption and message drain.',
+            'Memory paths use configured costs, without cache residency simulation.',
+            'Wait reason sets count instruction-cycles; overlapping categories are not additive.'],
+    }
+    if sim.clock.log_messages:
+        report['messages'] = sim.clock.messages
+    return report

@@ -27,8 +27,12 @@ for capture in args.captures:
             assert stage['complete'] > stage['start']
     (out / f'{name}.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
     summary.append(dict(capture=name, instructions=report['instruction_count'],
-                        cycles=report['total_cycles'], core_completion=report['core_completion'],
+                        cycles=report['total_cycles'],
+                        last_instruction_complete_cycle=report['last_instruction_complete_cycle'],
+                        last_node_complete_cycle=report['last_node_complete_cycle'],
+                        core_completion=report['core_completion'],
                         storage_peak_bytes=report['storage_peak_bytes'],
-                        audit='PASS: all instructions, dependencies, issue limits, resource intervals, capacity'))
+                        audit='PASS: unique instructions, dependencies, issue limits, resource intervals, '
+                              'operand handshakes, retirement, capacity and exact allocation/free lifetimes'))
     print(json.dumps(summary[-1]), flush=True)
 (out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')

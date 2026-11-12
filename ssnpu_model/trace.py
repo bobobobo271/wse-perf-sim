@@ -133,6 +133,7 @@ class TraceAdapter:
                 if v.pool.split('/')[0] != f'core:{i.core}' or ('/local' in v.pool and v.pool != f'core:{i.core}/pe:{i.pe}/local'):
                     raise ModelError(f'Tile accessed outside owning Core/PE: {key}')
                 i.inputs.add(key)
+                i.operands.append((o, key))
                 i.deps.add(v.producer)
                 v.consumers.add(i.id)
             for use in i.raw.get('ssnpu', {}).get('shared_inputs', []):

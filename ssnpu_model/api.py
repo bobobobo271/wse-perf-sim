@@ -1,4 +1,4 @@
-"""Public simulation entry point composing configuration, trace, and scheduler."""
+"""Public simulation entry point composing configuration, trace and Simulator."""
 from __future__ import annotations
 
 import copy
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .config import default_config, validate_config
 from .errors import ModelError
-from .scheduler import Scheduler
+from .simulator import Simulator
 from .trace import TraceAdapter
 
 
@@ -19,6 +19,6 @@ def simulate(capture_dir, config=None):
         config = json.loads(Path(config).read_text())
     config = validate_config(copy.deepcopy(config))
     try:
-        return Scheduler(TraceAdapter(capture_dir, config), config).run()
+        return Simulator(TraceAdapter(capture_dir, config), config).run()
     except (KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         raise ModelError(f'Invalid capture: {exc}') from exc

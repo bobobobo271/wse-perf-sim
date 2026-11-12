@@ -9,7 +9,7 @@ from ssnpu_model import ModelError, default_config, simulate
 from ssnpu_model.trace import TraceAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = ROOT / 'workspace/ssnpu-model'
+WORK = ROOT.parent / 'workspace/ssnpu-components/tests'
 
 
 def tile(oid, producer, shape=(1, 4), version=1, shared=False, handle=None):
@@ -63,13 +63,16 @@ def fixture(path, rows, barriers=(), threads=None):
 def audit(report, trace):
     """Independent invariant checks against exported times and capture edges."""
     rows = {r['op_id']: r for r in report['timeline']}
+    assert len(rows) == len(report['timeline'])
     assert rows.keys() == trace.instructions.keys()
     pe_issues, core_issues = Counter(), Counter()
     resources = defaultdict(list)
     for key, r in rows.items():
         i = trace.instructions[key]
-        assert all(rows[d]['complete'] <= r['issue'] for d in i.deps | i.sync)
+        assert all(rows[d]['complete'] + 2 <= r['issue'] for d in i.deps | i.sync)
         assert r['complete'] >= r['issue']
+        assert r['complete'] + 1 == r['rob_complete'] <= r['retire'] <= report['total_cycles']
+        assert r['state'] == 'retired'
         if not (i.alias or i.control):
             pe_issues[r['core'], r['pe'], r['issue']] += 1
             core_issues[r['core'], r['issue']] += 1
@@ -79,7 +82,18 @@ def audit(report, trace):
             resources[stage['resource']].append((stage['start'], stage['service_end']))
             prior = stage['complete']
         if r['stages']:
-            assert prior == r['complete']
+            assert prior <= r['complete']
+        if not (i.alias or i.control):
+            assert r['issue'] < r['received'] <= r['operands_ready'] <= r['compute_start']
+            assert r['compute_start'] < r['compute_end'] <= r['writeback_start'] <= r['writeback_end'] == r['complete']
+            reads = [a for a in r['accesses'] if a['kind'] == 'read']
+            writes = [a for a in r['accesses'] if a['kind'] == 'write']
+            assert len(reads) == len(i.operands)
+            assert len(writes) == len(i.outputs)
+            assert all(a['complete'] >= a['start'] + 2 for a in r['accesses'])
+            assert all(a['complete'] <= b['start'] for a, b in zip(reads, reads[1:]))
+            assert all(a['complete'] <= r['compute_start'] for a in reads)
+            assert all(a['start'] >= r['compute_end'] for a in writes)
     c = report['config']['parameters']
     assert max(pe_issues.values(), default=0) <= c['pe_issue_width']['value']
     assert max(core_issues.values(), default=0) <= c['core_issue_width']['value']
@@ -87,21 +101,43 @@ def audit(report, trace):
         ordered = sorted(intervals)
         assert all(a[1] <= b[0] for a, b in zip(ordered, ordered[1:]))
     usage, peaks = Counter(), Counter()
+    live, allocated, freed = set(), set(), set()
     for e in report['storage_events']:
         version = trace.versions[tuple(e['version'])]
         assert version.size == e['bytes']
         if e['action'] == 'free':
+            key = tuple(e['version'])
+            assert key in live and key not in freed
+            live.remove(key)
+            freed.add(key)
             assert not version.retained
             assert rows[version.producer]['complete'] <= e['cycle']
             for reader in version.consumers:
                 if rows[reader]['complete'] > e['cycle']:
-                    assert rows[reader]['issue'] == e['cycle']
+                    assert e.get('superseded_by') == reader
+                    assert rows[reader]['allocation_request'] < e['cycle'] < rows[reader]['issue']
                     assert any(trace.versions[k].slot == version.slot for k in trace.instructions[reader].outputs)
+        else:
+            key = tuple(e['version'])
+            assert key not in allocated
+            allocated.add(key)
+            live.add(key)
         usage[e['pool']] += e['bytes'] * (1 if e['action'] == 'allocate' else -1)
         peaks[e['pool']] = max(peaks[e['pool']], usage[e['pool']])
         assert 0 <= usage[e['pool']] <= c['shared_capacity' if e['pool'].endswith('/shared') else 'local_capacity']['value']
     assert dict(peaks) == report['storage_peak_bytes']
-    assert report['total_cycles'] == max((r['complete'] for r in rows.values()), default=0)
+    assert allocated == trace.versions.keys()
+    assert live == {key for key, v in trace.versions.items() if v.retained}
+    assert dict(usage) == report['storage_live_bytes']
+    assert report['total_cycles'] >= max((r['retire'] for r in rows.values()), default=0)
+    assert report['last_instruction_complete_cycle'] == max((rows[k]['complete'] for k, i in trace.instructions.items() if not i.control), default=0)
+    threads = defaultdict(list)
+    for i in trace.instructions.values():
+        if not i.control:
+            threads[i.raw['_identity']].append(i)
+    for thread in threads.values():
+        ordered = sorted(thread, key=lambda i: i.age)
+        assert all(rows[a.id]['retire'] <= rows[b.id]['retire'] for a, b in zip(ordered, ordered[1:]))
 
 
 class ModelTestCase(unittest.TestCase):
@@ -137,26 +173,29 @@ class ModelTests(ModelTestCase):
         b = op(1)
         d = op(2, inputs=a['outputs'], name='tile.add')
         _, t = self.run_rows([a, b, d])
-        self.assertEqual([t[k]['issue'] for k in (0, 1, 2)], [0, 1, 3])
-        self.assertEqual(t[2]['complete'], 6)
+        # Allocate 0->1->2, dispatch 2->3, compute [3,4)+2, write 6->7->8.
+        self.assertEqual([t[k]['issue'] for k in (0, 1, 2)], [2, 2, 12])
+        self.assertEqual([t[k]['compute_start'] for k in (0, 1, 2)], [3, 4, 15])
+        self.assertEqual(t[2]['complete'], 20)
 
     def test_ooo_bypass(self):
         slow = op(0, outputs=[tile(0, 0, (1, 40))])
         blocked = op(1, inputs=slow['outputs'], name='tile.exp')
         ready = op(2)
         _, t = self.run_rows([slow, blocked, ready])
-        self.assertEqual(t[2]['issue'], 10)
-        self.assertEqual(t[1]['issue'], 12)
+        self.assertEqual(t[2]['issue'], 2)
+        self.assertEqual(t[2]['compute_start'], 13)
+        self.assertEqual(t[1]['issue'], 21)
 
     def test_width_and_determinism(self):
         rows = [op(p, pe=p) for p in range(4)]
         self.c['parameters']['core_issue_width']['value'] = 2
         r, t = self.run_rows(rows)
-        self.assertEqual([t[p]['issue'] for p in range(4)], [0, 0, 1, 1])
+        self.assertEqual([t[p]['issue'] for p in range(4)], [3, 3, 2, 2])
         self.assertEqual(r, simulate(self.path, self.c))
         self.c['parameters']['core_issue_width']['value'] = 4
         _, t = self.run_rows(rows)
-        self.assertTrue(all(t[p]['issue'] == 0 for p in range(4)))
+        self.assertTrue(all(t[p]['issue'] == 2 for p in range(4)))
 
     def test_per_pe_issue_width_with_two_engines(self):
         tensor = dict(object_id=99, storage_id=99, version=0, producer=None,
@@ -165,10 +204,10 @@ class ModelTests(ModelTestCase):
         load['memory_accesses'] = [dict(object_id=99, shape=[1, 4])]
         self.c['parameters']['pe_issue_width']['value'] = 1
         _, t = self.run_rows([op(0), load])
-        self.assertEqual(t[1]['issue'], 1)
+        self.assertEqual(t[1]['issue'], 3)
         self.c['parameters']['pe_issue_width']['value'] = 2
         _, t = self.run_rows([op(0), load])
-        self.assertEqual(t[1]['issue'], 0)
+        self.assertEqual(t[1]['issue'], 2)
 
     def test_shared_memory_contention_and_four_pe_compute(self):
         rows = []
@@ -179,14 +218,15 @@ class ModelTests(ModelTestCase):
             load['memory_accesses'] = [dict(object_id=90, shape=[1, 4])]
             rows.extend([op(p, pe=p), load])
         _, t = self.run_rows(rows)
-        self.assertEqual(sorted(t[10+p]['issue'] for p in range(4)), [1, 5, 9, 13])
-        self.assertEqual({t[p]['issue'] for p in range(4)}, {0})
+        self.assertEqual(sorted(t[10+p]['issue'] for p in range(4)), [3, 3, 3, 3])
+        self.assertEqual(sorted(t[10+p]['compute_start'] for p in range(4)), [4, 8, 12, 16])
+        self.assertEqual({t[p]['issue'] for p in range(4)}, {2})
 
     def test_shared_last_use_and_reuse_liveout(self):
         rows = self.shared_rows()
         r, t = self.run_rows(rows)
         frees = [e for e in r['storage_events'] if e['pool'].endswith('/shared') and e['action'] == 'free']
-        self.assertEqual(frees[0]['cycle'], max(t[k]['complete'] for k in range(1, 5)))
+        self.assertEqual(frees[0]['cycle'], max(t[k]['complete'] for k in range(1, 5)) + 1)
         rows = self.shared_rows('reuse')
         r, _ = self.run_rows(rows)
         self.assertEqual(r['storage_live_bytes']['core:0/shared'], 16)
@@ -208,7 +248,7 @@ class ModelTests(ModelTestCase):
     def test_capacity_wait_and_recovery(self):
         self.c['parameters']['local_capacity']['value'] = 16
         r, t = self.run_rows([op(0), op(1)])
-        self.assertEqual(t[1]['issue'], 3)
+        self.assertEqual(t[1]['issue'], 10)
         self.assertTrue(any('capacity:' in reason for reason in r['wait_reason_sets']['1']))
 
     def test_fixed_overwrite_waits_readers_and_allows_inplace(self):
@@ -219,15 +259,15 @@ class ModelTests(ModelTestCase):
         self.assertGreaterEqual(t[2]['issue'], t[1]['complete'])
         self.c['parameters']['local_capacity']['value'] = 16
         _, t = self.run_rows([a, c])
-        self.assertEqual(t[2]['issue'], t[0]['complete'])
+        self.assertEqual(t[2]['issue'], t[0]['complete'] + 4)
 
     def test_empty_phases_and_tail_barrier(self):
         self.c['parameters']['barrier_latency']['value'] = 2
         r, t = self.run_rows([op(0), op(1, phase=2)], barriers=[0, 1, 2], threads=[0, 1, 2, 3])
-        self.assertEqual(t[1]['issue'], 7)
-        self.assertEqual(r['total_cycles'], 12)
+        self.assertEqual(t[1]['issue'], 20)
+        self.assertEqual(r['total_cycles'], 34)
         r, _ = self.run_rows([], barriers=[0, 1], threads=[0, 1, 2, 3])
-        self.assertEqual(r['total_cycles'], 4)
+        self.assertEqual(r['total_cycles'], 10)
 
     def test_errors(self):
         with self.assertRaisesRegex(ModelError, 'Missing producer'):
@@ -262,12 +302,14 @@ class ModelTests(ModelTestCase):
         (self.path / 'tasks.json').write_text(json.dumps(tasks))
         r = simulate(self.path, self.c)
         audit(r, TraceAdapter(self.path, self.c))
-        self.assertEqual(r['timeline'][0]['op_id'], 'task:1')
+        t = {row['op_id']: row for row in r['timeline']}
+        self.assertEqual(t['task:1']['issue'], 0)
+        self.assertEqual(t[0]['allocation_request'], t['task:1']['complete'] + 2)
 
     def test_dtype_and_zero_service_work(self):
         self.c['engines']['vector']['dtype_overrides']['float32'] = dict(throughput=1, latency=0)
         _, t = self.run_rows([op(0)])
-        self.assertEqual(t[0]['complete'], 4)
+        self.assertEqual(t[0]['complete'], 9)
         self.c['engines']['vector']['dtype_overrides']['float32']['throughput'] = 0
         with self.assertRaisesRegex(ModelError, 'throughput'):
             simulate(self.path, self.c)
@@ -293,7 +335,7 @@ class AdditionalTests(ModelTestCase):
         r = simulate(self.path, self.c)
         audit(r, TraceAdapter(self.path, self.c))
         t = {row['op_id']: row for row in r['timeline']}
-        self.assertEqual(t['task:1']['issue'], t['task:0']['complete'])
+        self.assertEqual(t['task:1']['issue'], t['task:0']['complete'] + 2)
 
     def test_zero_work_reduction(self):
         a = op(0, outputs=[tile(0, 0, (4, 1))])
@@ -319,7 +361,7 @@ class AdditionalTests(ModelTestCase):
                    outputs=[tile(10*p+2, 10*p+2, (2, 5))], name='tile.matmul')
             rows.extend([a, b, c])
         _, t = self.run_rows(rows)
-        self.assertEqual({t[p*10+2]['issue'] for p in range(4)}, {8})
+        self.assertEqual({t[p*10+2]['issue'] for p in range(4)}, {17})
         self.assertEqual({t[p*10+2]['stages'][0]['work'] for p in range(4)}, {30})
 
     def test_memory_path_override(self):
@@ -329,7 +371,35 @@ class AdditionalTests(ModelTestCase):
         load['memory_accesses'] = [dict(object_id=99, shape=[1, 4])]
         self.c['paths']['L2'] = dict(engine='memory', throughput=8, latency=3)
         _, t = self.run_rows([load])
-        self.assertEqual(t[0]['complete'], 5)
+        self.assertEqual(t[0]['compute_end'] - t[0]['compute_start'], 5)
+        self.assertEqual(t[0]['complete'], 10)
+
+    def test_tlsu_multiple_ranges_and_path_overrides_dtype(self):
+        tensors = [dict(object_id=oid, storage_id=oid, version=0, producer=None,
+                        shape=[1, 4], dtype='float32', kind='tensor', memory_space=space)
+                   for oid, space in ((90, 'DDR'), (91, 'L2'))]
+        load = op(0, inputs=tensors, name='tile.load')
+        load['memory_accesses'] = [dict(object_id=90, shape=[1, 2]), dict(object_id=91, shape=[1, 4])]
+        self.c['engines']['memory']['dtype_overrides']['float32'] = dict(throughput=1, latency=9)
+        self.c['paths']['L2'] = dict(engine='memory', throughput=8, latency=1)
+        report, t = self.run_rows([load])
+        self.assertEqual([(s['work'], s['start'], s['service_end'], s['complete']) for s in t[0]['stages']],
+                         [(8, 3, 11, 20), (16, 20, 22, 23)])
+        self.assertEqual(t[0]['complete'], 25)
+        self.assertEqual(report['resources']['core:0/memory']['bytes'], 24)
+
+    def test_tlsu_rejects_missing_or_unresolved_memory_ranges(self):
+        tensor = dict(object_id=90, shape=[1, 4], dtype='float32', kind='tensor', memory_space='DDR')
+        load = op(0, inputs=[tensor], name='tile.load')
+        with self.assertRaisesRegex(ModelError, 'Missing memory access range'):
+            self.run_rows([load])
+        load['memory_accesses'] = [dict(object_id=90)]
+        with self.assertRaisesRegex(ModelError, 'Unresolved memory access range'):
+            self.run_rows([load])
+        load['memory_accesses'] = [dict(object_id=90, shape=[1, 4])]
+        tensor['memory_space'] = 'unknown'
+        with self.assertRaisesRegex(ModelError, 'Unknown memory path'):
+            self.run_rows([load])
 
 
 if __name__ == '__main__':

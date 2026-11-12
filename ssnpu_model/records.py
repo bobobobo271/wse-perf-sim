@@ -1,4 +1,4 @@
-"""Internal instruction, storage version, and execution stage records."""
+"""Capture instruction and storage version records."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,6 +19,7 @@ class Instruction:
     outputs: set = field(default_factory=set)
     alias: bool = False
     control: bool = False
+    operands: list = field(default_factory=list)
 
 
 @dataclass
@@ -31,13 +32,3 @@ class Version:
     size: int
     consumers: set = field(default_factory=set)
     retained: bool = False
-
-
-@dataclass
-class Stage:
-    engine: str
-    resource: str
-    work: int
-    service: int
-    latency: int
-    unit: str

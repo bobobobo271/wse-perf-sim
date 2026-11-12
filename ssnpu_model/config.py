@@ -31,6 +31,7 @@ ENGINES = {
 def default_config():
     return {
         'name': 'logic-validation-only',
+        'message_log': False,
         'parameters': {k: {'value': v, 'unit': u, 'scope': s, 'meaning': m,
                            'source': 'synthetic logical validation; uncalibrated'}
                        for k, (v, u, s, m) in PARAMETERS.items()},
@@ -44,6 +45,8 @@ def default_config():
 
 def validate_config(c):
     try:
+        if type(c.get('message_log', False)) is not bool:
+            raise ModelError('message_log must be a boolean')
         for k in PARAMETERS:
             v = c['parameters'][k]['value']
             if type(v) is not int or v < (0 if k == 'barrier_latency' else 1):

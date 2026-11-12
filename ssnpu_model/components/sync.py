@@ -1,0 +1,39 @@
+"""Control nodes wait for completion broadcasts, including remote Core nodes."""
+from .base import Component
+from .protocol import Complete, Completed, Issued, core_name
+
+
+class Sync(Component):
+    def __init__(self, name, instructions, config):
+        super().__init__(name)
+        self.pending = {i.id: i for i in instructions}
+        self.done, self.running = set(), {}
+        self.latency = config['parameters']['barrier_latency']['value']
+
+    def tick(self, cycle):
+        for _, message in self.inputs(cycle):
+            if not isinstance(message, Completed):
+                raise TypeError(message)
+            self.done.add(message.instruction)
+        for key, i in list(self.pending.items()):
+            if (i.deps | i.sync) <= self.done:
+                self.send(core_name(i.core, 'rob'), Issued(key))
+                self.observe(key, issue=cycle, component=self.name,
+                             execution_component=self.name, state='synchronizing')
+                self.running[key] = (i, cycle + (self.latency if i.raw['ir_op'] == 'barrier' else 0))
+                del self.pending[key]
+        for key, (i, end) in list(self.running.items()):
+            if end <= cycle:
+                self.observe(key, complete=cycle, state='complete')
+                self.send(core_name(i.core, 'rob'), Complete(key))
+                del self.running[key]
+
+    def is_idle(self):
+        return super().is_idle() and not self.pending and not self.running
+
+    def next_event(self):
+        return min((end for _, end in self.running.values()), default=None)
+
+    def snapshot(self):
+        return dict(super().snapshot(), waiting={str(k): sorted(map(str, (i.deps | i.sync) - self.done))
+                    for k, i in self.pending.items()}, running={str(k): end for k, (_, end) in self.running.items()})
