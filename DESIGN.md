@@ -34,3 +34,9 @@ barrier 以 task/block/round 分组，核对完整参与集合、site 和 comple
 可手算回归覆盖服务吞吐与结果 latency、同周期 ready、乱序绕过、PE/Core 额度、确定性、四 PE Cube/Vector 并行、共享搬运串行、last-use/reuse、别名、多代固定位置、原位覆盖、容量等待恢复/死锁、空阶段/尾部 barrier、任务依赖、异常输入、dtype/path override。真实 capture 的独立审计核对所有指令完成、每条完成依赖、发射上限、资源服务区间互斥、存储事件容量上下界。
 
 默认值全部为合成逻辑测试值，没有借用 SuperScalarModel 的内部微操作吞吐作为 tile 参数。后续校准应记录对应 SuperScalarModel 参数路径/版本、单位换算、tile→内部操作映射和实测依据，再形成独立的硬件配置。当前不模拟多核互连、广播合并、访存缓存驻留、bank 冲突、有限 ROB、计算/搬运内部流水重叠或数值正确性。
+
+## 源码组织
+
+功能模块的职责表见 README。`api.simulate()` 负责组装组件；`trace.TraceAdapter` 生成 `records.Instruction/Version`，`cost.CostModel` 生成 `records.Stage`。`scheduler.Scheduler` 推进周期并协调 `events.EventQueue` 与 `resources.ResourceState`；`report.build_report()` 只读取状态并生成报告。`cli.main()` 处理命令行和文件写入。旧的 `model` 模块作为兼容入口保留。
+
+本次拆分保留现有调度规则、cost 公式、容量与生命周期逻辑、配置格式及报告字段。归档在 examples 下的输入和结果不修改；验证产生的文件写入 workspace。

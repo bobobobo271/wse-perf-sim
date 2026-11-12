@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from ssnpu_model import ModelError, default_config, simulate
-from ssnpu_model.model import TraceAdapter
+from ssnpu_model.trace import TraceAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'workspace/ssnpu-model'

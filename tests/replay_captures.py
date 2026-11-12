@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 from ssnpu_model import default_config, simulate
-from ssnpu_model.model import TraceAdapter
+from ssnpu_model.trace import TraceAdapter
 from test_model import audit
 
 parser = argparse.ArgumentParser()
