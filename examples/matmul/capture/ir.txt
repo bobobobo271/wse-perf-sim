@@ -1,0 +1,25 @@
+# pypto.program: shared_b
+import pypto.language as pl
+
+@pl.program
+class shared_b:
+    @pl.function(type=pl.FunctionType.InCore, level=pl.Level.CHIP_DIE, role=pl.Role.SubWorker)
+    def matmul(A: pl.Tensor[[512, 512], pl.FP16], B: pl.Tensor[[512, 128], pl.FP16], C: pl.Tensor[[512, 128], pl.FP32]) -> pl.Tensor[[512, 128], pl.FP32]:
+        pl.func_attr({"ssnpu.blocks": 2, "ssnpu.threads": 4, "ssnpu.cores": [0, 1], "ssnpu.pe_mapping": [0, 1, 2, 3]})
+        v0: pl.Scalar[pl.INDEX] = pl.ssnpu.block_id(attrs={"ssnpu.site": 0, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        v1: pl.Scalar[pl.INDEX] = pl.ssnpu.thread_id(attrs={"ssnpu.site": 1, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        v2: pl.Tile[[128, 128], pl.FP16] = pl.ssnpu.shared_tile(attrs={"ssnpu.site": 2, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "SharedTileReg"})
+        v3: pl.Tile[[32, 128], pl.FP32] = pl.tile.full([32, 128], dtype=pl.FP32, value=pl.const(0, pl.INDEX), attrs={"ssnpu.site": 3, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        v4: pl.Tile[[32, 128], pl.FP32] = pl.tile.full([32, 128], dtype=pl.FP32, value=pl.const(0, pl.INDEX), attrs={"ssnpu.site": 4, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        for k, (acc0, acc1) in pl.range(4, init_values=(v3, v4)):
+            v5: pl.Tile[[128, 128], pl.FP16] = pl.ssnpu.load_into(v2, B, [k * 128, 0], attrs={"ssnpu.site": 5, "ssnpu.pes": [0], "ssnpu.reuse": [], "ssnpu.storage": "SharedTileReg"})
+            v6: pl.Tile[[32, 128], pl.FP16] = pl.tile.load(A, [v0 * 256 + v1 * 32, k * 128], [32, 128], [32, 128], attrs={"ssnpu.site": 6, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v7: pl.Tile[[32, 128], pl.FP16] = pl.tile.load(A, [v0 * 256 + v1 * 32 + 128, k * 128], [32, 128], [32, 128], attrs={"ssnpu.site": 7, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v8: pl.Scalar[pl.INDEX] = pl.ssnpu.barrier(attrs={"ssnpu.site": 8, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+            v9: pl.Tile[[32, 128], pl.FP32] = pl.tile.matmul_acc(acc0, v6, v5, attrs={"ssnpu.site": 9, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [2], "ssnpu.storage": "LocalTileReg"})
+            v10: pl.Tile[[32, 128], pl.FP32] = pl.tile.matmul_acc(acc1, v7, v5, attrs={"ssnpu.site": 10, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v11: pl.Scalar[pl.INDEX] = pl.ssnpu.barrier(attrs={"ssnpu.site": 11, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+            final0, final1 = pl._dump.yield_(v9, v10, types=[pl.Tile[[32, 128], pl.FP32], pl.Tile[[32, 128], pl.FP32]])
+        v12: pl.Tensor[[512, 128], pl.FP32] = pl.tile.store(final0, [v0 * 256 + v1 * 32, 0], C, attrs={"ssnpu.site": 12, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        v13: pl.Tensor[[512, 128], pl.FP32] = pl.tile.store(final1, [v0 * 256 + v1 * 32 + 128, 0], C, attrs={"ssnpu.site": 13, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        return C

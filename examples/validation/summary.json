@@ -1,0 +1,46 @@
+[
+  {
+    "capture": "matmul",
+    "instructions": 168,
+    "cycles": 7001,
+    "core_completion": {
+      "0": 7001,
+      "1": 7001
+    },
+    "storage_peak_bytes": {
+      "core:0/pe:0/local": 49152,
+      "core:0/pe:1/local": 49152,
+      "core:0/pe:2/local": 49152,
+      "core:0/pe:3/local": 49152,
+      "core:1/pe:0/local": 49152,
+      "core:1/pe:1/local": 49152,
+      "core:1/pe:2/local": 49152,
+      "core:1/pe:3/local": 49152,
+      "core:0/shared": 32768,
+      "core:1/shared": 32768
+    },
+    "audit": "PASS: all instructions, dependencies, issue limits, resource intervals, capacity"
+  },
+  {
+    "capture": "fa",
+    "instructions": 320,
+    "cycles": 1910,
+    "core_completion": {
+      "0": 1910,
+      "1": 1910
+    },
+    "storage_peak_bytes": {
+      "core:0/pe:0/local": 53760,
+      "core:0/pe:1/local": 53760,
+      "core:0/pe:2/local": 53760,
+      "core:0/pe:3/local": 53760,
+      "core:1/pe:0/local": 53760,
+      "core:1/pe:1/local": 53760,
+      "core:1/pe:2/local": 53760,
+      "core:1/pe:3/local": 53760,
+      "core:0/shared": 32768,
+      "core:1/shared": 32768
+    },
+    "audit": "PASS: all instructions, dependencies, issue limits, resource intervals, capacity"
+  }
+]

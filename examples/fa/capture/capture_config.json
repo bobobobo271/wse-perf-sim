@@ -1,0 +1,17 @@
+{
+  "format_version": 2,
+  "complete": true,
+  "entry": "fa",
+  "capture_trace": true,
+  "max_steps": 1000000,
+  "device": {},
+  "scheduling_policy": "explicit_thread_capture_order",
+  "synchronization_policy": "validated_full_block_phases",
+  "storage_dependency_policy": "rectangles_and_immutable_shared_versions",
+  "subblock_policy": "unsplit_zero",
+  "ssnpu_spec_version": 1,
+  "thread_order": "ascending",
+  "shared_storage_policy": "independent_versions",
+  "shared_lifetime_policy": "last_use_and_all_prior_reads_complete",
+  "mode": "trace_only"
+}

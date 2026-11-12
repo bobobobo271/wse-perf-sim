@@ -1,0 +1,115 @@
+{
+  "format_version": 2,
+  "ssnpu_spec_version": 1,
+  "complete": true,
+  "instances": [
+    {
+      "task_id": 0,
+      "block_id": 0,
+      "subblock_id": 0,
+      "thread_id": 0,
+      "status": "completed",
+      "operation_count": 43,
+      "mapping": {
+        "core_id": 0,
+        "pe_id": 0
+      },
+      "trace_file": "task_0_block_0_subblock_0_thread_0.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 0,
+      "subblock_id": 0,
+      "thread_id": 1,
+      "status": "completed",
+      "operation_count": 39,
+      "mapping": {
+        "core_id": 0,
+        "pe_id": 1
+      },
+      "trace_file": "task_0_block_0_subblock_0_thread_1.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 0,
+      "subblock_id": 0,
+      "thread_id": 2,
+      "status": "completed",
+      "operation_count": 39,
+      "mapping": {
+        "core_id": 0,
+        "pe_id": 2
+      },
+      "trace_file": "task_0_block_0_subblock_0_thread_2.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 0,
+      "subblock_id": 0,
+      "thread_id": 3,
+      "status": "completed",
+      "operation_count": 39,
+      "mapping": {
+        "core_id": 0,
+        "pe_id": 3
+      },
+      "trace_file": "task_0_block_0_subblock_0_thread_3.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 1,
+      "subblock_id": 0,
+      "thread_id": 0,
+      "status": "completed",
+      "operation_count": 43,
+      "mapping": {
+        "core_id": 1,
+        "pe_id": 0
+      },
+      "trace_file": "task_0_block_1_subblock_0_thread_0.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 1,
+      "subblock_id": 0,
+      "thread_id": 1,
+      "status": "completed",
+      "operation_count": 39,
+      "mapping": {
+        "core_id": 1,
+        "pe_id": 1
+      },
+      "trace_file": "task_0_block_1_subblock_0_thread_1.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 1,
+      "subblock_id": 0,
+      "thread_id": 2,
+      "status": "completed",
+      "operation_count": 39,
+      "mapping": {
+        "core_id": 1,
+        "pe_id": 2
+      },
+      "trace_file": "task_0_block_1_subblock_0_thread_2.jsonl"
+    },
+    {
+      "task_id": 0,
+      "block_id": 1,
+      "subblock_id": 0,
+      "thread_id": 3,
+      "status": "completed",
+      "operation_count": 39,
+      "mapping": {
+        "core_id": 1,
+        "pe_id": 3
+      },
+      "trace_file": "task_0_block_1_subblock_0_thread_3.jsonl"
+    }
+  ],
+  "tasks_file": "tasks.json",
+  "events_file": "events.jsonl",
+  "config_file": "capture_config.json",
+  "objects_file": "objects.json"
+}

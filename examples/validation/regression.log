@@ -1,0 +1,25 @@
+test_cube_work_and_scope (test_model.AdditionalTests.test_cube_work_and_scope) ... ok
+test_memory_path_override (test_model.AdditionalTests.test_memory_path_override) ... ok
+test_padded_storage_capacity (test_model.AdditionalTests.test_padded_storage_capacity) ... ok
+test_shared_handle_independent_physical_versions (test_model.AdditionalTests.test_shared_handle_independent_physical_versions) ... ok
+test_skipped_task_preserves_dependencies (test_model.AdditionalTests.test_skipped_task_preserves_dependencies) ... ok
+test_zero_work_reduction (test_model.AdditionalTests.test_zero_work_reduction) ... ok
+test_alias_and_repeated_shared_versions (test_model.ModelTests.test_alias_and_repeated_shared_versions) ... ok
+test_bad_participants_and_lifetime (test_model.ModelTests.test_bad_participants_and_lifetime) ... ok
+test_capacity_wait_and_recovery (test_model.ModelTests.test_capacity_wait_and_recovery) ... ok
+test_dtype_and_zero_service_work (test_model.ModelTests.test_dtype_and_zero_service_work) ... ok
+test_empty_phases_and_tail_barrier (test_model.ModelTests.test_empty_phases_and_tail_barrier) ... ok
+test_errors (test_model.ModelTests.test_errors) ... ok
+test_fixed_overwrite_waits_readers_and_allows_inplace (test_model.ModelTests.test_fixed_overwrite_waits_readers_and_allows_inplace) ... ok
+test_ooo_bypass (test_model.ModelTests.test_ooo_bypass) ... ok
+test_per_pe_issue_width_with_two_engines (test_model.ModelTests.test_per_pe_issue_width_with_two_engines) ... ok
+test_shared_last_use_and_reuse_liveout (test_model.ModelTests.test_shared_last_use_and_reuse_liveout) ... ok
+test_shared_memory_contention_and_four_pe_compute (test_model.ModelTests.test_shared_memory_contention_and_four_pe_compute) ... ok
+test_task_dependency (test_model.ModelTests.test_task_dependency) ... ok
+test_throughput_and_latency (test_model.ModelTests.test_throughput_and_latency) ... ok
+test_width_and_determinism (test_model.ModelTests.test_width_and_determinism) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 0.128s
+
+OK

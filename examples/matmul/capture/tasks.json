@@ -1,0 +1,136 @@
+[
+  {
+    "task_id": 0,
+    "entry": "matmul",
+    "function_type": "InCore",
+    "arguments": [
+      {
+        "object_id": 0,
+        "version": 0
+      },
+      {
+        "object_id": 1,
+        "version": 0
+      },
+      {
+        "object_id": 2,
+        "version": 0
+      }
+    ],
+    "parent_task_id": null,
+    "parent_instance": null,
+    "core_num": 2,
+    "sync_start": false,
+    "predicate": true,
+    "allow_early_resolve": false,
+    "dependencies": [],
+    "scope_id": null,
+    "location": "/home/lc/pypto/hw-native-sys/workspace/ssnpu-workload-design/matmul_ir_design.py:13:-1",
+    "status": "completed",
+    "instances": [
+      {
+        "task_id": 0,
+        "block_id": 0,
+        "subblock_id": 0,
+        "thread_id": 0,
+        "status": "completed",
+        "operation_count": 24,
+        "mapping": {
+          "core_id": 0,
+          "pe_id": 0
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 0,
+        "subblock_id": 0,
+        "thread_id": 1,
+        "status": "completed",
+        "operation_count": 20,
+        "mapping": {
+          "core_id": 0,
+          "pe_id": 1
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 0,
+        "subblock_id": 0,
+        "thread_id": 2,
+        "status": "completed",
+        "operation_count": 20,
+        "mapping": {
+          "core_id": 0,
+          "pe_id": 2
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 0,
+        "subblock_id": 0,
+        "thread_id": 3,
+        "status": "completed",
+        "operation_count": 20,
+        "mapping": {
+          "core_id": 0,
+          "pe_id": 3
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 1,
+        "subblock_id": 0,
+        "thread_id": 0,
+        "status": "completed",
+        "operation_count": 24,
+        "mapping": {
+          "core_id": 1,
+          "pe_id": 0
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 1,
+        "subblock_id": 0,
+        "thread_id": 1,
+        "status": "completed",
+        "operation_count": 20,
+        "mapping": {
+          "core_id": 1,
+          "pe_id": 1
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 1,
+        "subblock_id": 0,
+        "thread_id": 2,
+        "status": "completed",
+        "operation_count": 20,
+        "mapping": {
+          "core_id": 1,
+          "pe_id": 2
+        }
+      },
+      {
+        "task_id": 0,
+        "block_id": 1,
+        "subblock_id": 0,
+        "thread_id": 3,
+        "status": "completed",
+        "operation_count": 20,
+        "mapping": {
+          "core_id": 1,
+          "pe_id": 3
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "object_id": 2,
+        "version": 16
+      }
+    ],
+    "completion_op_id": 168
+  }
+]

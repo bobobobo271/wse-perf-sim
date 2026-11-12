@@ -1,0 +1,322 @@
+{
+  "total_cycles": 6,
+  "instruction_count": 3,
+  "core_completion": {
+    "0": 6
+  },
+  "pe_completion": {
+    "0:0": 6,
+    "0:1": 3
+  },
+  "pe_tile_completion": {
+    "0:0": 6,
+    "0:1": 3
+  },
+  "source_sha256": {
+    "manifest.json": "f87bef6fbf56f32e44c6017ae2ebf92db710f022394332733bfc0d3ce6408e87",
+    "objects.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "tasks.json": "8de28edb07242f17361252943efa88b3392db81f4498eaaffe109ac0a6d632f0",
+    "events.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "thread_0.jsonl": "f65bfe7b0faf3f4db31cdcaae78c9ff4e76be866c286d22a39ed65657cb34b25",
+    "thread_1.jsonl": "3a3ed98ac9957c35dc9eb3f1d5a1c58e4fc00f2e932fcbd1c6f0b3284ad1985d"
+  },
+  "timeline": [
+    {
+      "op_id": 1,
+      "ir_op": "tile.full",
+      "core": 0,
+      "pe": 0,
+      "issue": 0,
+      "stages": [
+        {
+          "engine": "vector",
+          "resource": "core:0/pe:0/vector",
+          "work": 4,
+          "start": 0,
+          "service_end": 1,
+          "complete": 3
+        }
+      ],
+      "complete": 3
+    },
+    {
+      "op_id": 2,
+      "ir_op": "tile.full",
+      "core": 0,
+      "pe": 1,
+      "issue": 0,
+      "stages": [
+        {
+          "engine": "vector",
+          "resource": "core:0/pe:1/vector",
+          "work": 4,
+          "start": 0,
+          "service_end": 1,
+          "complete": 3
+        }
+      ],
+      "complete": 3
+    },
+    {
+      "op_id": 0,
+      "ir_op": "tile.full",
+      "core": 0,
+      "pe": 0,
+      "issue": 3,
+      "stages": [
+        {
+          "engine": "vector",
+          "resource": "core:0/pe:0/vector",
+          "work": 4,
+          "start": 3,
+          "service_end": 4,
+          "complete": 6
+        }
+      ],
+      "complete": 6
+    },
+    {
+      "op_id": "task:0",
+      "ir_op": "task_complete",
+      "core": 0,
+      "pe": 0,
+      "issue": 6,
+      "stages": [],
+      "complete": 6
+    }
+  ],
+  "resources": {
+    "core:0/pe:0/vector": {
+      "service_cycles": 2,
+      "utilization": 0.3333333333333333,
+      "bytes": 0
+    },
+    "core:0/pe:1/vector": {
+      "service_cycles": 1,
+      "utilization": 0.16666666666666666,
+      "bytes": 0
+    }
+  },
+  "storage_peak_bytes": {
+    "core:0/pe:0/local": 16,
+    "core:0/pe:1/local": 16
+  },
+  "storage_live_bytes": {
+    "core:0/pe:0/local": 0,
+    "core:0/pe:1/local": 0
+  },
+  "storage_events": [
+    {
+      "cycle": 0,
+      "action": "allocate",
+      "version": [
+        "storage",
+        1,
+        1
+      ],
+      "pool": "core:0/pe:0/local",
+      "bytes": 16
+    },
+    {
+      "cycle": 0,
+      "action": "allocate",
+      "version": [
+        "storage",
+        2,
+        1
+      ],
+      "pool": "core:0/pe:1/local",
+      "bytes": 16
+    },
+    {
+      "cycle": 3,
+      "action": "free",
+      "version": [
+        "storage",
+        1,
+        1
+      ],
+      "pool": "core:0/pe:0/local",
+      "bytes": 16
+    },
+    {
+      "cycle": 3,
+      "action": "free",
+      "version": [
+        "storage",
+        2,
+        1
+      ],
+      "pool": "core:0/pe:1/local",
+      "bytes": 16
+    },
+    {
+      "cycle": 3,
+      "action": "allocate",
+      "version": [
+        "storage",
+        0,
+        1
+      ],
+      "pool": "core:0/pe:0/local",
+      "bytes": 16
+    },
+    {
+      "cycle": 6,
+      "action": "free",
+      "version": [
+        "storage",
+        0,
+        1
+      ],
+      "pool": "core:0/pe:0/local",
+      "bytes": 16
+    }
+  ],
+  "wait_reason_sets": {
+    "0": {
+      "dependency|resource:core:0/pe:0/vector": 1,
+      "dependency": 2
+    },
+    "task:0": {
+      "dependency": 6
+    }
+  },
+  "internal_stage_resource_wait_cycles": {},
+  "config": {
+    "name": "logic-validation-only",
+    "parameters": {
+      "pe_count": {
+        "value": 4,
+        "unit": "PE",
+        "scope": "Core",
+        "meaning": "Number of independent compute engines",
+        "source": "synthetic logical validation; uncalibrated"
+      },
+      "pe_issue_width": {
+        "value": 2,
+        "unit": "tile/cycle",
+        "scope": "PE",
+        "meaning": "Maximum tile issues per cycle",
+        "source": "synthetic logical validation; uncalibrated"
+      },
+      "core_issue_width": {
+        "value": 4,
+        "unit": "tile/cycle",
+        "scope": "Core",
+        "meaning": "Maximum tile issues per cycle",
+        "source": "synthetic logical validation; uncalibrated"
+      },
+      "local_capacity": {
+        "value": 1048576,
+        "unit": "byte",
+        "scope": "PE",
+        "meaning": "LocalTileReg capacity",
+        "source": "synthetic logical validation; uncalibrated"
+      },
+      "shared_capacity": {
+        "value": 1048576,
+        "unit": "byte",
+        "scope": "Core",
+        "meaning": "SharedTileReg capacity",
+        "source": "synthetic logical validation; uncalibrated"
+      },
+      "barrier_latency": {
+        "value": 2,
+        "unit": "cycle",
+        "scope": "block",
+        "meaning": "Full phase synchronization delay",
+        "source": "synthetic logical validation; uncalibrated"
+      }
+    },
+    "engines": {
+      "cube": {
+        "throughput": 4096,
+        "latency": 4,
+        "unit": "MAC/cycle",
+        "scope": "PE",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "vector": {
+        "throughput": 256,
+        "latency": 2,
+        "unit": "element/cycle",
+        "scope": "PE",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "exp": {
+        "throughput": 64,
+        "latency": 4,
+        "unit": "element/cycle",
+        "scope": "PE",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "cast": {
+        "throughput": 256,
+        "latency": 2,
+        "unit": "element/cycle",
+        "scope": "PE",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "reduce": {
+        "throughput": 128,
+        "latency": 3,
+        "unit": "reduction/cycle",
+        "scope": "PE",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "memory": {
+        "throughput": 256,
+        "latency": 8,
+        "unit": "byte/cycle",
+        "scope": "Core",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "shared_read": {
+        "throughput": 256,
+        "latency": 2,
+        "unit": "byte/cycle",
+        "scope": "Core",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      },
+      "shared_write": {
+        "throughput": 256,
+        "latency": 2,
+        "unit": "byte/cycle",
+        "scope": "Core",
+        "meaning": "Service rate and result latency after service",
+        "source": "synthetic logical validation; uncalibrated",
+        "dtype_overrides": {}
+      }
+    },
+    "paths": {
+      "DDR": "memory",
+      "L1": "memory",
+      "L2": "memory"
+    }
+  },
+  "assumptions": [
+    "Synthetic rates; hardware cycle accuracy has not been calibrated.",
+    "Unlimited window/ROB; order_dependencies establish age, not completion.",
+    "Sequential internal stages; private TileReg access included in compute cost.",
+    "Shared reads charged separately per consumer; no broadcast combining.",
+    "Output allocated at issue; fixed slot overwrites await prior readers.",
+    "Views are zero-cost aliases; reuse-only shared versions remain live-out.",
+    "Memory paths use configured costs, without cache residency simulation.",
+    "Wait reason sets count instruction-cycles; overlapping categories are not additive."
+  ]
+}

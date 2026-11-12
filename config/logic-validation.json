@@ -1,0 +1,126 @@
+{
+  "name": "logic-validation-only",
+  "parameters": {
+    "pe_count": {
+      "value": 4,
+      "unit": "PE",
+      "scope": "Core",
+      "meaning": "Number of independent compute engines",
+      "source": "synthetic logical validation; uncalibrated"
+    },
+    "pe_issue_width": {
+      "value": 2,
+      "unit": "tile/cycle",
+      "scope": "PE",
+      "meaning": "Maximum tile issues per cycle",
+      "source": "synthetic logical validation; uncalibrated"
+    },
+    "core_issue_width": {
+      "value": 4,
+      "unit": "tile/cycle",
+      "scope": "Core",
+      "meaning": "Maximum tile issues per cycle",
+      "source": "synthetic logical validation; uncalibrated"
+    },
+    "local_capacity": {
+      "value": 1048576,
+      "unit": "byte",
+      "scope": "PE",
+      "meaning": "LocalTileReg capacity",
+      "source": "synthetic logical validation; uncalibrated"
+    },
+    "shared_capacity": {
+      "value": 1048576,
+      "unit": "byte",
+      "scope": "Core",
+      "meaning": "SharedTileReg capacity",
+      "source": "synthetic logical validation; uncalibrated"
+    },
+    "barrier_latency": {
+      "value": 2,
+      "unit": "cycle",
+      "scope": "block",
+      "meaning": "Full phase synchronization delay",
+      "source": "synthetic logical validation; uncalibrated"
+    }
+  },
+  "engines": {
+    "cube": {
+      "throughput": 4096,
+      "latency": 4,
+      "unit": "MAC/cycle",
+      "scope": "PE",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "vector": {
+      "throughput": 256,
+      "latency": 2,
+      "unit": "element/cycle",
+      "scope": "PE",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "exp": {
+      "throughput": 64,
+      "latency": 4,
+      "unit": "element/cycle",
+      "scope": "PE",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "cast": {
+      "throughput": 256,
+      "latency": 2,
+      "unit": "element/cycle",
+      "scope": "PE",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "reduce": {
+      "throughput": 128,
+      "latency": 3,
+      "unit": "reduction/cycle",
+      "scope": "PE",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "memory": {
+      "throughput": 256,
+      "latency": 8,
+      "unit": "byte/cycle",
+      "scope": "Core",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "shared_read": {
+      "throughput": 256,
+      "latency": 2,
+      "unit": "byte/cycle",
+      "scope": "Core",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    },
+    "shared_write": {
+      "throughput": 256,
+      "latency": 2,
+      "unit": "byte/cycle",
+      "scope": "Core",
+      "meaning": "Service rate and result latency after service",
+      "source": "synthetic logical validation; uncalibrated",
+      "dtype_overrides": {}
+    }
+  },
+  "paths": {
+    "DDR": "memory",
+    "L1": "memory",
+    "L2": "memory"
+  }
+}

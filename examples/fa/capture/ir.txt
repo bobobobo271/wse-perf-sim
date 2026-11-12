@@ -1,0 +1,42 @@
+# pypto.program: shared_kv
+import pypto.language as pl
+
+@pl.program
+class shared_kv:
+    @pl.function(type=pl.FunctionType.InCore, level=pl.Level.CHIP_DIE, role=pl.Role.SubWorker)
+    def fa(Q: pl.Tensor[[256, 64], pl.FP16], K: pl.Tensor[[256, 64], pl.FP16], V: pl.Tensor[[256, 64], pl.FP16], O: pl.Tensor[[256, 64], pl.FP32]) -> pl.Tensor[[256, 64], pl.FP32]:
+        pl.func_attr({"ssnpu.blocks": 2, "ssnpu.threads": 4, "ssnpu.cores": [0, 1], "ssnpu.pe_mapping": [0, 1, 2, 3]})
+        v0: pl.Scalar[pl.INDEX] = pl.ssnpu.block_id(attrs={"ssnpu.site": 0, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        v1: pl.Scalar[pl.INDEX] = pl.ssnpu.thread_id(attrs={"ssnpu.site": 1, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        v2: pl.Tile[[128, 64], pl.FP16] = pl.ssnpu.shared_tile(attrs={"ssnpu.site": 2, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "SharedTileReg"})
+        v3: pl.Tile[[128, 64], pl.FP16] = pl.ssnpu.shared_tile(attrs={"ssnpu.site": 3, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "SharedTileReg"})
+        v4: pl.Tile[[32, 64], pl.FP16] = pl.tile.load(Q, [v0 * 128 + v1 * 32, 0], [32, 64], [32, 64], attrs={"ssnpu.site": 4, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        v5: pl.Tile[[32, 1], pl.FP32] = pl.tile.full([32, 1], dtype=pl.FP32, value=pl.const(pl._dump.float64("fff0000000000000"), pl.FP32), attrs={"ssnpu.site": 5, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        v6: pl.Tile[[32, 1], pl.FP32] = pl.tile.full([32, 1], dtype=pl.FP32, value=pl.const(0, pl.INDEX), attrs={"ssnpu.site": 6, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        v7: pl.Tile[[32, 64], pl.FP32] = pl.tile.full([32, 64], dtype=pl.FP32, value=pl.const(0, pl.INDEX), attrs={"ssnpu.site": 7, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        v8: pl.Tile[[32, 128], pl.FP32] = pl.tile.full([32, 128], dtype=pl.FP32, value=pl.const(0, pl.INDEX), attrs={"ssnpu.site": 8, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        for j, (m, l, o) in pl.range(2, init_values=(v5, v6, v7)):
+            v9: pl.Tile[[128, 64], pl.FP16] = pl.ssnpu.load_into(v2, K, [j * 128, 0], attrs={"ssnpu.site": 9, "ssnpu.pes": [0], "ssnpu.reuse": [], "ssnpu.storage": "SharedTileReg"})
+            v10: pl.Tile[[128, 64], pl.FP16] = pl.ssnpu.load_into(v3, V, [j * 128, 0], attrs={"ssnpu.site": 10, "ssnpu.pes": [0], "ssnpu.reuse": [], "ssnpu.storage": "SharedTileReg"})
+            v11: pl.Scalar[pl.INDEX] = pl.ssnpu.barrier(attrs={"ssnpu.site": 11, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+            v12: pl.Tile[[64, 128], pl.FP16] = pl.tile.transpose_view(v9, attrs={"ssnpu.site": 12, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+            v13: pl.Tile[[32, 128], pl.FP32] = pl.tile.matmul(v4, v12, attrs={"ssnpu.site": 13, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v14: pl.Tile[[32, 128], pl.FP32] = pl.tile.muls(v13, 0.125, attrs={"ssnpu.site": 14, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v15: pl.Tile[[32, 1], pl.FP32] = pl.tile.row_max(v14, v8, attrs={"ssnpu.site": 15, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v16: pl.Tile[[32, 1], pl.FP32] = pl.tile.maximum(m, v15, attrs={"ssnpu.site": 16, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v17: pl.Tile[[32, 1], pl.FP32] = pl.tile.sub(m, v16, attrs={"ssnpu.site": 17, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v18: pl.Tile[[32, 1], pl.FP32] = pl.tile.exp(v17, attrs={"ssnpu.site": 18, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v19: pl.Tile[[32, 128], pl.FP32] = pl.tile.row_expand_sub(v14, v16, attrs={"ssnpu.site": 19, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v20: pl.Tile[[32, 128], pl.FP32] = pl.tile.exp(v19, attrs={"ssnpu.site": 20, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v21: pl.Tile[[32, 1], pl.FP32] = pl.tile.mul(v18, l, attrs={"ssnpu.site": 21, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v22: pl.Tile[[32, 1], pl.FP32] = pl.tile.row_sum(v20, v8, attrs={"ssnpu.site": 22, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v23: pl.Tile[[32, 1], pl.FP32] = pl.tile.add(v21, v22, attrs={"ssnpu.site": 23, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v24: pl.Tile[[32, 128], pl.FP16] = pl.tile.cast(v20, target_type=pl.FP16, attrs={"ssnpu.site": 24, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v25: pl.Tile[[32, 64], pl.FP32] = pl.tile.matmul(v24, v10, attrs={"ssnpu.site": 25, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v26: pl.Tile[[32, 64], pl.FP32] = pl.tile.row_expand_mul(o, v18, attrs={"ssnpu.site": 26, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v27: pl.Tile[[32, 64], pl.FP32] = pl.tile.add(v26, v25, attrs={"ssnpu.site": 27, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+            v28: pl.Scalar[pl.INDEX] = pl.ssnpu.barrier(attrs={"ssnpu.site": 28, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+            mf, lf, of = pl._dump.yield_(v16, v23, v27, types=[pl.Tile[[32, 1], pl.FP32], pl.Tile[[32, 1], pl.FP32], pl.Tile[[32, 64], pl.FP32]])
+        v29: pl.Tile[[32, 64], pl.FP32] = pl.tile.row_expand_div(of, lf, attrs={"ssnpu.site": 29, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": [], "ssnpu.storage": "LocalTileReg"})
+        v30: pl.Tensor[[256, 64], pl.FP32] = pl.tile.store(v29, [v0 * 128 + v1 * 32, 0], O, attrs={"ssnpu.site": 30, "ssnpu.pes": [0, 1, 2, 3], "ssnpu.reuse": []})
+        return O
