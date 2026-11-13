@@ -4,7 +4,7 @@
 
 `api.simulate(capture_dir, config=None)` 保持原接口；配置仍可使用字典或 JSON 路径。`TraceAdapter` 读取 capture v2 / SSNPU v1，校验线程身份、顺序、数据依赖、同步、barrier 参与者和版本生命周期。`order_dependencies` 只确定线程年龄与退休顺序，不转成执行完成依赖。适配器构建后，Instruction / Version 元数据只读；`operands` 保留输入操作数的原始顺序和解析别名后的版本。
 
-每 Core 建立 Scheduler、ROB、TileReg、TLSU、Sync，每 PE 建立 Cube、Vector。TileReg 直接持有容量和版本状态，不再另包一层存储管理器。组件持有自己的队列和动态状态；没有组件引用其他组件实例。Simulator 只将指令路由给对应单元，不生成执行阶段。Cube、Vector、TLSU 内部的 `start()` 直接解析指令并计算工作量和延迟；公共 `Service` 只记录服务时钟与统计，`ExecutionUnit` 只复用操作数握手、计算队列和结果返回逻辑，不调度其他组件。
+每 Core 建立 Scheduler、ROB、TileReg、TLSU、Sync、CommPort，每 PE 建立 Cube、Vector。TileReg 直接持有容量和版本状态，不再另包一层存储管理器。组件持有自己的队列和动态状态；没有组件引用其他组件实例。Simulator 只将指令路由给对应单元，不生成执行阶段。Cube、Vector、TLSU 内部的 `start()` 直接解析指令并计算工作量和延迟；公共 `Service` 只记录服务时钟与统计，`ExecutionUnit` 只复用操作数握手、计算队列和结果返回逻辑，不调度其他组件。
 
 | 组件 | 独占的动态状态 |
 |---|---|
@@ -41,6 +41,8 @@
 ROB 在加载时按 `_identity` 和 `age` 建立线程条目。发射可以乱序，完成立即广播，退休只从各线程头推进。控制节点单独跟踪退休，不用 PE 的线程位置模拟 barrier。零延迟控制节点同周期发送 Issued 和 Complete，仍经历消息交付。依赖唤醒与 TileReg 释放均不等待退休。
 
 ## 发射、服务与完成
+
+WSE 配置的计算吞吐按整核计量：FP16 Cube 为 4096 MAC/cycle/核，Vector 与转换路径以 256 B/cycle/核为预算。当前采用固定等分模型，每个 PE 得到整核预算的 `1/pe_count`，空闲份额不借给其他 PE；这是建模假设。Vector 按操作数据类型把字节预算换算为元素吞吐，exp/reduce 还受配置中的合成操作吞吐约束。通用 `default_config()` 保留原来的每 PE 合成参数。上述预算不包含真实阵列的小矩阵利用率校准。
 
 Scheduler 确认数据和同步依赖后，只发送一次输出分配请求。TileReg 原子分配所有输出或保留请求等待；已保留容量在等待发射时继续占用。收到成功响应后，Scheduler 按 PE 间轮转、PE 内最老就绪顺序发射，成功派发才消耗 PE/Core 额度。资源繁忙由执行组件排队处理，不阻止 Scheduler 派发其他命令。
 
@@ -113,3 +115,7 @@ TLSU [memory write service + latency] --Complete(store)--> ROB
 默认合成配置下，本轮 matmul 为 168 条 / 7041 周期，FA 为 320 条 / 2182 周期，ooo 为 3 条 / 22 周期。examples 的历史归档不改写；周期变化仅供观察，不作为新模型验收依据。新示例、测试临时 capture 和运行报告写入上级 workspace/ssnpu-components。
 
 当前不模拟数值正确性、多核互连、广播合并、缓存驻留、bank 冲突、有限窗口/ROB，以及单条指令内部多个操作数/计算阶段的重叠。速率全部是未校准的合成值。
+
+## WSE 通信接口
+
+核侧 `CommPort` 把 `comm.submit` / `comm.wait` 和 Tile 访问转换为请求、数据访问、完成令牌。WSE 侧 `CommUnit` 只接收通用协议和独立安装配置，负责接纳、时隙、传输与发布。详细合同、故障和收尾语义见 [COMMUNIT.md](docs/COMMUNIT.md)。

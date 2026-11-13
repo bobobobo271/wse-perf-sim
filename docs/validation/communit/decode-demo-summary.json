@@ -1,0 +1,161 @@
+{
+  "spec": {
+    "batch": 1,
+    "query_heads": 8,
+    "kv_heads": 2,
+    "head_dim": 32,
+    "sequence_length": 512,
+    "sequence_splits": 4,
+    "tile_tokens": 64,
+    "hbm_chunk_tokens": 128,
+    "hbm_gbps": 256.0,
+    "hbm_startup_ns": 0.0,
+    "pe_count": 4,
+    "seed": 7
+  },
+  "total_cycles": 2281,
+  "total_time_us": 1.6292857142857142,
+  "single_core_time_us": 6.381428571428572,
+  "instruction_count": 1604,
+  "validation": {
+    "multicore_vs_single": {
+      "passed": true,
+      "max_abs_error": 1.2357952073216438e-05,
+      "rmse": 4.222271783152909e-06,
+      "max_tolerance_ratio": 0.023998805417715516,
+      "atol": 0.0005,
+      "rtol": 0.005
+    },
+    "multicore_vs_dense": {
+      "passed": true,
+      "max_abs_error": 1.5280276083745603e-05,
+      "rmse": 4.894618077581393e-06,
+      "max_tolerance_ratio": 0.027559783844704706,
+      "atol": 0.0005,
+      "rtol": 0.005
+    },
+    "single_vs_dense": {
+      "passed": true,
+      "max_abs_error": 1.7155959749021177e-05,
+      "rmse": 5.02057855812039e-06,
+      "max_tolerance_ratio": 0.030942801016169766,
+      "atol": 0.0005,
+      "rtol": 0.005
+    },
+    "conditions": {
+      "input_dtype": "float16",
+      "matmul_accumulation": "float32",
+      "probability_cast": "float16 before PV",
+      "state_dtype": "float32",
+      "dense_reference": "float64",
+      "seed": 7,
+      "same_inputs": true,
+      "mask": "All supplied KV tokens visible to this decode query",
+      "single_core": "All batch/head groups serialized on core 0, same PE count, tiles and HBM bandwidth"
+    },
+    "passed": true
+  },
+  "layout": {
+    "mapping": [
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 0,
+        "rank": 0,
+        "start": 0,
+        "end": 128,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 8,
+        "rank": 1,
+        "start": 128,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 16,
+        "rank": 2,
+        "start": 256,
+        "end": 384,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 24,
+        "rank": 3,
+        "start": 384,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 32,
+        "rank": 0,
+        "start": 0,
+        "end": 128,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 1,
+        "rank": 1,
+        "start": 128,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 9,
+        "rank": 2,
+        "start": 256,
+        "end": 384,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 17,
+        "rank": 3,
+        "start": 384,
+        "end": 512,
+        "wave": 0
+      }
+    ],
+    "sram_reserved_bytes": {
+      "0": 33536,
+      "8": 33536,
+      "16": 33536,
+      "24": 33536,
+      "32": 33536,
+      "1": 33536,
+      "9": 33536,
+      "17": 33536
+    },
+    "q_distribution": "Each worker reads its Q copy from HBM; counted explicitly.",
+    "output": "Every worker merges; only rank 0 writes O to HBM.",
+    "kv_residency": "Cold per invocation; no cross-step SRAM KV reuse.",
+    "collectives": "Group AllGather, conservatively serialized automatic Calendar schedule."
+  },
+  "hbm_bytes": 134144,
+  "software": {
+    "python": "3.11.16 (main, Sep  1 2026, 14:08:22) [Clang 22.1.3 ]",
+    "numpy": "2.4.6"
+  },
+  "input_sha256": "68809095060a0cf09cd0721fcd5fbc0961cf0325e5b56463ac2039eb811e663a",
+  "limits": [
+    "Synthetic uncalibrated cycle model; fixed equal PE compute partitions.",
+    "Cold KV cache in HBM each invocation; Q copies read separately by workers.",
+    "Automatic Calendar packets/groups conservatively serialized.",
+    "All workers merge; rank 0 writes each head group output.",
+    "No projections, RoPE, KV append, paging or cross-step cache model."
+  ]
+}

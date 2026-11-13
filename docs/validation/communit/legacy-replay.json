@@ -1,0 +1,65 @@
+[
+  {
+    "capture": "matmul",
+    "instructions": 168,
+    "cycles": 7041,
+    "last_instruction_complete_cycle": 7037,
+    "last_node_complete_cycle": 7039,
+    "core_completion": {
+      "0": 7039,
+      "1": 7037
+    },
+    "storage_peak_bytes": {
+      "core:0/pe:0/local": 49152,
+      "core:0/pe:1/local": 49152,
+      "core:0/pe:2/local": 49152,
+      "core:0/pe:3/local": 49152,
+      "core:0/shared": 32768,
+      "core:1/pe:1/local": 49152,
+      "core:1/pe:2/local": 49152,
+      "core:1/pe:3/local": 49152,
+      "core:1/pe:0/local": 49152,
+      "core:1/shared": 32768
+    },
+    "audit": "PASS: unique instructions, dependencies, issue limits, resource intervals, operand handshakes, retirement, capacity and exact allocation/free lifetimes"
+  },
+  {
+    "capture": "fa",
+    "instructions": 320,
+    "cycles": 2182,
+    "last_instruction_complete_cycle": 2178,
+    "last_node_complete_cycle": 2180,
+    "core_completion": {
+      "0": 2180,
+      "1": 2178
+    },
+    "storage_peak_bytes": {
+      "core:0/pe:0/local": 61952,
+      "core:0/pe:3/local": 61952,
+      "core:0/pe:1/local": 61952,
+      "core:0/pe:2/local": 61952,
+      "core:0/shared": 32768,
+      "core:1/pe:0/local": 61952,
+      "core:1/pe:1/local": 61952,
+      "core:1/pe:2/local": 61952,
+      "core:1/pe:3/local": 61952,
+      "core:1/shared": 32768
+    },
+    "audit": "PASS: unique instructions, dependencies, issue limits, resource intervals, operand handshakes, retirement, capacity and exact allocation/free lifetimes"
+  },
+  {
+    "capture": "ooo",
+    "instructions": 3,
+    "cycles": 22,
+    "last_instruction_complete_cycle": 18,
+    "last_node_complete_cycle": 20,
+    "core_completion": {
+      "0": 20
+    },
+    "storage_peak_bytes": {
+      "core:0/pe:1/local": 16,
+      "core:0/pe:0/local": 16
+    },
+    "audit": "PASS: unique instructions, dependencies, issue limits, resource intervals, operand handshakes, retirement, capacity and exact allocation/free lifetimes"
+  }
+]

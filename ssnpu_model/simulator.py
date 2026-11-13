@@ -2,6 +2,8 @@
 import json
 
 from .clock import Clock
+from .components.comm import CommPort
+from .communication.protocol import platform_spec
 from .components import Cube, Vector, TLSU, ROB, Scheduler, Sync, TileReg
 from .components.protocol import core_name, unit_name
 from .errors import ModelError
@@ -24,6 +26,8 @@ class Simulator:
                 ('rob', ROB(core_name(core, 'rob'), list(nodes.values()), subscribers)),
                 ('tile', TileReg(core_name(core, 'tile'), nodes, trace.versions, config)),
                 ('sync', Sync(core_name(core, 'sync'), control, config)),
+                ('comm', CommPort(core_name(core, 'comm'),
+                    {i.id: i for i in real if unit_name(i) == core_name(core, 'comm')})),
                 ('tlsu', TLSU(core_name(core, 'tlsu'),
                             {i.id: i for i in real if unit_name(i) == core_name(core, 'tlsu')}, config)),
             ):
@@ -33,10 +37,15 @@ class Simulator:
                     name = core_name(core, f'pe:{pe}/{unit}')
                     self.components[name] = cls(name, {i.id: i for i in real if unit_name(i) == name}, config)
         self.noc = None
+        self.hbm = None
+        if 'hbm' in config:
+            from .components.hbm import HBM
+            self.hbm = HBM(config)
+            self.components['hbm'] = self.hbm
         if trace.calendar_phases:
-            from .components.noc import CalendarNoC
-            self.noc = CalendarNoC(self.nodes, trace.calendar_phases, config)
-            self.components['noc'] = self.noc
+            from .communication.unit import CommUnit
+            self.noc = CommUnit(trace.comm_installation, platform_spec(config))
+            self.components['communit'] = self.noc
         self.clock = Clock(self.components, config.get('message_log', False))
         self.tick_order = list(tick_order) if tick_order is not None else sorted(self.components)
         if len(self.tick_order) != len(self.components) or set(self.tick_order) != set(self.components):

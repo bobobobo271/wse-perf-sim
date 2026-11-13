@@ -73,19 +73,11 @@ def unit_name(i):
     op = i.raw['ir_op'].removeprefix('tile.')
     if i.alias:
         return core_name(i.core, 'tile')
-    if op.startswith('calendar.') or op in ('load', 'store', 'ssnpu.load_into'):
+    if op.startswith('comm.'):
+        return core_name(i.core, 'comm')
+    if op in ('load', 'store', 'ssnpu.load_into', 'memory.copy'):
         return core_name(i.core, 'tlsu')
     return core_name(i.core, f'pe:{i.pe}/' + ('cube' if op in ('matmul', 'matmul_acc') else 'vector'))
-
-
-@dataclass(frozen=True)
-class CalendarCommand:
-    instruction: object
-
-
-@dataclass(frozen=True)
-class CalendarComplete:
-    instruction: object
 
 
 @dataclass(frozen=True)
@@ -121,7 +113,21 @@ class PublishReceive:
 
 
 @dataclass(frozen=True)
-class CalendarReply:
+class TransferReply:
     instruction: object
     event: str
     detail: object = None
+
+
+@dataclass(frozen=True)
+class HBMRequest:
+    instruction: object
+    core: int
+    work: int
+    direction: str
+    first_stage: bool
+
+
+@dataclass(frozen=True)
+class HBMDone:
+    instruction: object

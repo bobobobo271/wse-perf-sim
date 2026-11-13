@@ -1,0 +1,156 @@
+{
+  "decode-demo": {
+    "spec": {
+      "batch": 1,
+      "query_heads": 8,
+      "kv_heads": 2,
+      "head_dim": 32,
+      "sequence_length": 512,
+      "sequence_splits": 4,
+      "tile_tokens": 64,
+      "hbm_chunk_tokens": 128,
+      "hbm_gbps": 256.0,
+      "hbm_startup_ns": 0.0,
+      "pe_count": 4,
+      "seed": 7
+    },
+    "software": {
+      "python": "3.11.16 (main, Sep  1 2026, 14:08:22) [Clang 22.1.3 ]",
+      "numpy": "2.4.6"
+    },
+    "input_sha256": "68809095060a0cf09cd0721fcd5fbc0961cf0325e5b56463ac2039eb811e663a",
+    "same_inputs": true,
+    "before_cycles": 2239,
+    "after_cycles": 2281,
+    "before_time_us": 1.5992857142857142,
+    "after_time_us": 1.6292857142857142,
+    "single_core_time_us": 6.381428571428572,
+    "hbm_bytes": 134144,
+    "before_hbm_bytes": 134144,
+    "outputs_array_equal": {
+      "multicore": true,
+      "single_core": true,
+      "dense_reference": true
+    },
+    "validation": {
+      "multicore_vs_single": {
+        "passed": true,
+        "max_abs_error": 1.2357952073216438e-05,
+        "rmse": 4.222271783152909e-06,
+        "max_tolerance_ratio": 0.023998805417715516,
+        "atol": 0.0005,
+        "rtol": 0.005
+      },
+      "multicore_vs_dense": {
+        "passed": true,
+        "max_abs_error": 1.5280276083745603e-05,
+        "rmse": 4.894618077581393e-06,
+        "max_tolerance_ratio": 0.027559783844704706,
+        "atol": 0.0005,
+        "rtol": 0.005
+      },
+      "single_vs_dense": {
+        "passed": true,
+        "max_abs_error": 1.7155959749021177e-05,
+        "rmse": 5.02057855812039e-06,
+        "max_tolerance_ratio": 0.030942801016169766,
+        "atol": 0.0005,
+        "rtol": 0.005
+      },
+      "conditions": {
+        "input_dtype": "float16",
+        "matmul_accumulation": "float32",
+        "probability_cast": "float16 before PV",
+        "state_dtype": "float32",
+        "dense_reference": "float64",
+        "seed": 7,
+        "same_inputs": true,
+        "mask": "All supplied KV tokens visible to this decode query",
+        "single_core": "All batch/head groups serialized on core 0, same PE count, tiles and HBM bandwidth"
+      },
+      "passed": true
+    },
+    "calreg_version": "64b0f046fa40985f2b5739c3aab6ae7b5665b59d8eff80a2cca6c5cc82f3bf3d",
+    "request_count": 8,
+    "outputs_sha256": "0b20c33555486212199d523256641aa82e401a9219a7c8ae5a1f29d1c2acd15d",
+    "report_sha256": "ec13b42163874fd36cb1c5a5a9b585fc2c3553419a16472136c6d9f17383c3b3",
+    "previous_baseline": "Local pre-refactor decode implementation, not origin/main (which has no decode workload)"
+  },
+  "decode-wse40": {
+    "spec": {
+      "batch": 1,
+      "query_heads": 32,
+      "kv_heads": 8,
+      "head_dim": 128,
+      "sequence_length": 1280,
+      "sequence_splits": 5,
+      "tile_tokens": 128,
+      "hbm_chunk_tokens": 256,
+      "hbm_gbps": 256.0,
+      "hbm_startup_ns": 0.0,
+      "pe_count": 4,
+      "seed": 7
+    },
+    "software": {
+      "python": "3.11.16 (main, Sep  1 2026, 14:08:22) [Clang 22.1.3 ]",
+      "numpy": "2.4.6"
+    },
+    "input_sha256": "d47060d54087bb4d70decfbffd19909407581859a40fb472d7b145b45cda91be",
+    "same_inputs": true,
+    "before_cycles": 33882,
+    "after_cycles": 33919,
+    "before_time_us": 24.201428571428572,
+    "after_time_us": 24.22785714285714,
+    "single_core_time_us": 67.92,
+    "hbm_bytes": 5300224,
+    "before_hbm_bytes": 5300224,
+    "outputs_array_equal": {
+      "multicore": true,
+      "single_core": true,
+      "dense_reference": true
+    },
+    "validation": {
+      "multicore_vs_single": {
+        "passed": true,
+        "max_abs_error": 1.231534406542778e-05,
+        "rmse": 3.2758342012319705e-06,
+        "max_tolerance_ratio": 0.024492148038613302,
+        "atol": 0.0005,
+        "rtol": 0.005
+      },
+      "multicore_vs_dense": {
+        "passed": true,
+        "max_abs_error": 1.2733849910739892e-05,
+        "rmse": 2.9144517811204626e-06,
+        "max_tolerance_ratio": 0.02447302837618735,
+        "atol": 0.0005,
+        "rtol": 0.005
+      },
+      "single_vs_dense": {
+        "passed": true,
+        "max_abs_error": 1.036548743045887e-05,
+        "rmse": 2.947923043618791e-06,
+        "max_tolerance_ratio": 0.01818968776193963,
+        "atol": 0.0005,
+        "rtol": 0.005
+      },
+      "conditions": {
+        "input_dtype": "float16",
+        "matmul_accumulation": "float32",
+        "probability_cast": "float16 before PV",
+        "state_dtype": "float32",
+        "dense_reference": "float64",
+        "seed": 7,
+        "same_inputs": true,
+        "mask": "All supplied KV tokens visible to this decode query",
+        "single_core": "All batch/head groups serialized on core 0, same PE count, tiles and HBM bandwidth"
+      },
+      "passed": true
+    },
+    "calreg_version": "0577c26bc88912c42d9e25adc8d097b3b8ea7d37ed722e2a1e116db40369e13c",
+    "request_count": 40,
+    "outputs_sha256": "f9ab82003dd230c4d7891be6020bf471a1be90e97aafd224a1242479959b7d1b",
+    "report_sha256": "beaaf7bd3b33488b6926e09751b062bb604f691bc668c758448259aa1b98a7ac",
+    "previous_baseline": "Local pre-refactor decode implementation, not origin/main (which has no decode workload)"
+  }
+}

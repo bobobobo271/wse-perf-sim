@@ -8,11 +8,13 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --sr
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m unittest discover -s tests -v
 ```
 
-[WSE 参数、输入计划与执行语义](docs/WSE.md) · [测试条件和结果](docs/VALIDATION.md)
+[WSE 参数与执行语义](docs/WSE.md) · [CommUnit 解耦接口](docs/COMMUNIT.md) · [本次数值与时序验证](docs/COMMUNIT_VALIDATION.md) · [历史验证](docs/VALIDATION.md)
 
 下面保留原 SSNPU 模型说明；无通信计划时仍按原逻辑验证配置运行。
 
 # SSNPU Python tile 模型
+
+[Decode FlashAttention 示例](examples/decode/README.md) 支持参数化的 Q/K/V 输入、HBM 全片带宽、序列分片核数、SRAM 双缓冲和组内状态合并，并生成单核数值对照与计算/通信流水图。WSE profile 的计算预算按整核等分给 PE；通用逻辑验证 profile 保留原有参数。
 
 Python 3.11+、仅标准库。读取 workload capture v2 / SSNPU v1，采用独立组件、消息队列和周期驱动。每 Core 建立 Scheduler、ROB、TileReg、TLSU、Sync，每 PE 建立 Cube、Vector。Core 间资源独立，PE 数默认 4。参数用于逻辑验证，尚未校准硬件周期精度。
 

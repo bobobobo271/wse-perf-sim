@@ -20,11 +20,9 @@ PHASES = (
     ('compute (service + result latency)', 'compute_start', 'compute_end'),
     ('writeback', 'writeback_start', 'writeback_end'),
 )
-CALENDAR_PHASES = {
-    'calendar.post': (('receive registration', 'received', 'complete'),),
-    'calendar.send': (('source access', 'received', 'operands_ready'),
-                      ('Calendar wait + TX drain', 'operands_ready', 'complete')),
-    'calendar.receive': (('receive wait + publication', 'received', 'complete'),),
+COMM_PHASES = {
+    'comm.submit': (('request submission + acceptance', 'received', 'complete'),),
+    'comm.wait': (('completion token wait', 'received', 'complete'),),
 }
 IDENTITY = ('op_id', 'ir_op', 'core', 'pe', 'execution_component')
 
@@ -65,10 +63,10 @@ def to_perfetto(events, cycle_ns=1.0):
                 raise ModelError(f'Missing {name} for instruction {key}')
         optional = ('received', 'operands_ready', 'compute_start', 'compute_end', 'writeback_start', 'writeback_end')
         phase_group = optional
-        if identity['ir_op'] in CALENDAR_PHASES:
-            phase_group = ('received', 'operands_ready') if identity['ir_op'] == 'calendar.send' else ('received',)
+        if identity['ir_op'] in COMM_PHASES:
+            phase_group = ('received',)
             if not all(k in times for k in phase_group):
-                raise ModelError(f'Incomplete Calendar timestamps for instruction {key}')
+                raise ModelError(f'Incomplete communication timestamps for instruction {key}')
         for group in (phase_group, ('allocation_request', 'allocated')):
             if any(k in times for k in group) and not all(k in times for k in group):
                 raise ModelError(f'Incomplete phase timestamps for instruction {key}')
@@ -114,7 +112,7 @@ def to_perfetto(events, cycle_ns=1.0):
             else:
                 label = 'active' if role == 'execution' else 'completion/retirement'
                 components = unit.split('/')[1:]
-                names = {'cube': 'Cube', 'vector': 'Vector', 'tlsu': 'TLSU', 'tile': 'TileReg', 'sync': 'Sync', 'rob': 'ROB'}
+                names = {'cube': 'Cube', 'vector': 'Vector', 'tlsu': 'TLSU', 'comm': 'CommPort', 'tile': 'TileReg', 'sync': 'Sync', 'rob': 'ROB'}
                 path = [f'Core {core}'] + [f'PE {part[3:]}' if part.startswith('pe:') else names.get(part, part) for part in components]
                 if role == 'execution':
                     path.append('In-flight commands')
@@ -136,7 +134,7 @@ def to_perfetto(events, cycle_ns=1.0):
             if role == 'execution':
                 span(label, begin, finish, 'ssnpu.instruction',
                      {'interval_start_event': 'received' if 'received' in times else 'issue'})
-                phases = CALENDAR_PHASES.get(identity['ir_op'], PHASES)
+                phases = COMM_PHASES.get(identity['ir_op'], PHASES)
             else:
                 span(label + ' / ROB', begin, finish, 'ssnpu.rob')
                 phases = (('ROB notification', 'complete', 'rob_complete'),

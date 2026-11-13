@@ -8,7 +8,7 @@ from .protocol import (Access, AccessDone, Allocate, Allocated, Complete, Consum
 from .service import Service
 from ..errors import ModelError
 from .protocol import (ReceivePrepare, PortFence, WriteReservations, RouterWrite,
-                       PublishReceive, CalendarReply)
+                       PublishReceive, TransferReply)
 
 
 class TileReg(Component):
@@ -47,10 +47,10 @@ class TileReg(Component):
         self.storage_events.append(event)
 
     def allocate(self, instruction):
-        if instruction.raw['ir_op'] == 'calendar.post':
-            instruction = self.nodes[instruction.raw['calendar']['reserve_for']]
-        # Post reserves the receive producer's output; await must not allocate it twice.
-        if instruction.raw['ir_op'] == 'calendar.receive' and instruction.outputs <= self.active:
+        if instruction.raw['ir_op'] == 'comm.submit':
+            instruction = self.nodes[instruction.raw['communication']['reserve_for']]
+        # Submit reserves the wait producer's output; wait must not allocate it twice.
+        if instruction.raw['ir_op'] == 'comm.wait' and instruction.outputs <= self.active:
             return None
         delta, replace = Counter(), set()
         for key in sorted(instruction.outputs, key=str):
@@ -97,7 +97,7 @@ class TileReg(Component):
         self.send(unit_name(self.nodes[request.instruction]),
                   AccessDone(request.instruction, request.request), 'access')
 
-    def calendar_message(self, message):
+    def transfer_message(self, message):
         if not isinstance(message, (ReceivePrepare, PortFence, WriteReservations, RouterWrite, PublishReceive)):
             return False
         key = message.instruction
@@ -117,13 +117,13 @@ class TileReg(Component):
             if cursor != self.versions[version].size or len(expected) != len(message.expected):
                 raise ModelError('Invalid receive coverage')
             self.receives[key] = dict(version=version, expected=expected, pending=set(), committed=set(), published=False)
-            self.send('noc', CalendarReply(key, 'posted'))
+            self.send(core_name(i.core, 'comm'), TransferReply(key, 'posted'))
         elif isinstance(message, PortFence):
             if key not in self.receives:
                 raise ModelError('Port fence before receive registration')
             self.port_fences.add(key)
             available = max(self.cycle, self.service.available[core_name(i.core, 'shared_write')])
-            self.send('noc', CalendarReply(key, 'port_ready', available))
+            self.send(core_name(i.core, 'comm'), TransferReply(key, 'port_ready', available))
         elif isinstance(message, WriteReservations):
             if key not in self.port_fences:
                 raise ModelError('Write reservation without admission fence')
@@ -138,7 +138,7 @@ class TileReg(Component):
                         raise ModelError('Shared write reservations overlap')
                 self.reservations[key, source] = start, service, latency
             self.port_fences.remove(key)
-            self.send('noc', CalendarReply(key, 'reserved'))
+            self.send(core_name(i.core, 'comm'), TransferReply(key, 'reserved'))
         elif isinstance(message, RouterWrite):
             ctx = self.receives[key]
             if message.version != version or ctx['version'] != version:
@@ -163,12 +163,17 @@ class TileReg(Component):
                 raise ModelError('Premature or duplicate receive publication')
             self.ready.add(version)
             ctx['published'] = True
-            self.send('noc', CalendarReply(key, 'published'))
+            self.send(core_name(i.core, 'comm'), TransferReply(key, 'published'))
         return True
 
     def tick(self, cycle):
         for _, message in self.inputs(cycle):
-            if self.calendar_message(message):
+            try:
+                if self.transfer_message(message):
+                    continue
+            except ModelError as exc:
+                self.send(core_name(self.nodes[message.instruction].core, 'comm'),
+                          TransferReply(message.instruction, 'fault', str(exc)))
                 continue
             if isinstance(message, Allocate):
                 self.allocations.append(message)
@@ -191,7 +196,7 @@ class TileReg(Component):
                 ctx = self.receives[message.instruction]
                 ctx['pending'].remove(message.source)
                 ctx['committed'].add(message.source)
-                self.send('noc', CalendarReply(message.instruction, 'written', (message.source, end)))
+                self.send(core_name(self.nodes[message.instruction].core, 'comm'), TransferReply(message.instruction, 'written', (message.source, end)))
                 self.router_running.remove((message, end))
         for request, end in list(self.running):
             if end <= cycle:

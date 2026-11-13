@@ -81,9 +81,9 @@ class CalendarTests(unittest.TestCase):
             publish, = [e for e in events if e['kind'] == 'receive_published' and e['node'] == c]
             self.assertEqual(len(writes), 2)
             self.assertGreaterEqual(publish['time_ns'], max(e['time_ns'] for e in writes))
-            receive = rows[operation_id('pair', c, 'receive')]
+            receive = rows[operation_id('pair', c, 'wait')]
             self.assertGreaterEqual(rows[f'consume{c}']['issue'], receive['complete'] + 2)
-            self.assertLess(rows[operation_id('pair', c, 'post')]['complete'], receive['complete'])
+            self.assertLess(rows[operation_id('pair', c, 'submit')]['complete'], receive['complete'])
 
     def test_bandwidth_changes_flit_count_and_tail_only(self):
         fast = self.run_model()
@@ -95,6 +95,10 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(fast['noc']['phases'], slow['noc']['phases'])
 
     def test_background_shared_write_waits_for_reserved_window(self):
+        # Isolate Shared-port arbitration: pin the producer to the original
+        # synthetic compute rate so its write still reaches the reserved window.
+        # The WSE whole-core compute budget is tested separately.
+        self.config['engines']['vector'].update(scope='PE', throughput=256, unit='element/cycle')
         path = self.path / 'thread_0.jsonl'
         rows = [json.loads(line) for line in path.read_text().splitlines()]
         background = op('background', deps=['produce0'],
@@ -149,7 +153,7 @@ class CalendarTests(unittest.TestCase):
             self.assertEqual(memory['service_cycles'], math.ceil((100 + 256 / 1000) * 1.4))
             self.assertEqual(memory['bytes'], 256)
         for row in r['timeline']:
-            if row['ir_op'].startswith('calendar.'):
+            if row['ir_op'].startswith('comm.'):
                 self.assertFalse(any(s['engine'] == 'memory' for s in row['stages']))
 
     def test_source_can_release_before_tx_drains(self):
@@ -194,8 +198,8 @@ class CalendarTests(unittest.TestCase):
         r = self.run_model()
         trace = to_perfetto(r['instruction_events'], cycle_ns=5/7)
         names = {e['name'] for e in trace['traceEvents']}
-        self.assertIn('Calendar wait + TX drain', names)
-        self.assertIn('receive wait + publication', names)
+        self.assertIn('request submission + acceptance', names)
+        self.assertIn('completion token wait', names)
         self.assertGreater(len(to_pftrace(r['instruction_events'], cycle_ns=5/7)), 0)
 
     def test_non_speculative_contract_required(self):
@@ -209,7 +213,7 @@ class CalendarTests(unittest.TestCase):
         rows = {i['op_id']: i for i in r['timeline']}
         for c in range(2):
             self.assertGreaterEqual(rows['barrier:0:0:0']['issue'],
-                                    rows[operation_id('pair', c, 'receive')]['complete'] + 2)
+                                    rows[operation_id('pair', c, 'wait')]['complete'] + 2)
             self.assertGreaterEqual(rows[f'consume{c}']['issue'], rows['barrier:0:0:0']['complete'] + 2)
 
     def test_plan_file_hash_and_input_are_preserved(self):
@@ -250,13 +254,13 @@ class CalendarTests(unittest.TestCase):
     def prepared_tile(self):
         sim = Simulator(TraceAdapter(self.path, self.config, self.plan), self.config)
         t = sim.components['core:0/tile']
-        receive = operation_id('pair', 0, 'receive')
-        post = operation_id('pair', 0, 'post')
+        receive = operation_id('pair', 0, 'wait')
+        post = operation_id('pair', 0, 'submit')
         self.assertIsNone(t.allocate(sim.nodes[post]))
         version, = sim.nodes[receive].outputs
-        t.calendar_message(ReceivePrepare(receive, version, ((0, 0, 256), (1, 256, 256))))
-        t.calendar_message(PortFence(receive))
-        t.calendar_message(WriteReservations(receive, ((0, 10, 1, 2), (1, 20, 1, 2))))
+        t.transfer_message(ReceivePrepare(receive, version, ((0, 0, 256), (1, 256, 256))))
+        t.transfer_message(PortFence(receive))
+        t.transfer_message(WriteReservations(receive, ((0, 10, 1, 2), (1, 20, 1, 2))))
         return sim, t, receive, version
 
     def test_reserved_write_gaps_and_independent_read_port(self):
@@ -268,7 +272,7 @@ class CalendarTests(unittest.TestCase):
         t.cycle = 9  # Two-cycle write would overlap [10,11).
         self.assertIsNone(t.start_access(request))
         # Reads use another port; exercise a legal consumer's read request.
-        send = sim.nodes[operation_id('pair', 0, 'send')]
+        send = sim.nodes[operation_id('pair', 0, 'submit')]
         read = Access(send.id, 'read', key, False, 256, 'float32')
         self.assertIsNotNone(t.start_access(read))
         t.cycle = 11
@@ -278,30 +282,30 @@ class CalendarTests(unittest.TestCase):
         _, t, receive, version = self.prepared_tile()
         t.cycle = 10
         write = RouterWrite(receive, version, 0, 0, 256)
-        t.calendar_message(write)
-        t.calendar_message(write)  # Duplicate while write is pending.
+        t.transfer_message(write)
+        t.transfer_message(write)  # Duplicate while write is pending.
         self.assertEqual(t.service.bytes['core:0/shared_write'], 256)
         with self.assertRaisesRegex(ModelError, 'Premature'):
-            t.calendar_message(PublishReceive(receive))
+            t.transfer_message(PublishReceive(receive))
         with self.assertRaisesRegex(ModelError, 'Stale'):
-            t.calendar_message(RouterWrite(receive, ('shared', 'old'), 1, 256, 256))
+            t.transfer_message(RouterWrite(receive, ('shared', 'old'), 1, 256, 256))
         with self.assertRaisesRegex(ModelError, 'authorized'):
-            t.calendar_message(RouterWrite(receive, version, 0, 1, 256))
+            t.transfer_message(RouterWrite(receive, version, 0, 1, 256))
         t.tick(13)
         self.assertNotIn(version, t.ready)
         t.cycle = 20
-        t.calendar_message(RouterWrite(receive, version, 1, 256, 256))
+        t.transfer_message(RouterWrite(receive, version, 1, 256, 256))
         t.tick(23)
-        t.calendar_message(PublishReceive(receive))
+        t.transfer_message(PublishReceive(receive))
         self.assertIn(version, t.ready)
-        t.calendar_message(write)  # Duplicate after commit also consumes no service.
+        t.transfer_message(write)  # Duplicate after commit also consumes no service.
         self.assertEqual(t.service.bytes['core:0/shared_write'], 512)
 
     def test_late_write_fails(self):
         _, t, receive, version = self.prepared_tile()
         t.cycle = 11
         with self.assertRaisesRegex(ModelError, 'missed'):
-            t.calendar_message(RouterWrite(receive, version, 0, 0, 256))
+            t.transfer_message(RouterWrite(receive, version, 0, 0, 256))
 
 
 class FullWseTests(unittest.TestCase):
@@ -327,14 +331,14 @@ class FullWseTests(unittest.TestCase):
                             phases=[dict(name='archive', opcode=1, epoch=0, nodes=entries)])
                 report = simulate(capture, config, communication_plan=plan)
                 self.assertEqual(report['noc']['phases']['archive']['remote_committed_bytes'], {0: 256, 1: 256})
-                self.assertEqual(report['instruction_count'], sum(not i.control for i in original.instructions.values()) + 6)
+                self.assertEqual(report['instruction_count'], sum(not i.control for i in original.instructions.values()) + 4)
 
     def test_allgather_40_256B(self):
         WORK.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=WORK) as directory:
             plan = make_capture(directory)
             report = simulate(directory, communication_plan=plan)
-        self.assertEqual(report['instruction_count'], 320)  # 80 capture + 240 Calendar commands.
+        self.assertEqual(report['instruction_count'], 240)  # 80 capture + 160 submit/wait commands.
         for phase, amount in [('row', 1792), ('column', 8192)]:
             state = report['noc']['phases'][phase]
             self.assertEqual(state['status'], 'done')

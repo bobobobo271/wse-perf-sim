@@ -15,5 +15,8 @@ class Cube(ExecutionUnit):
         work = m * n * k
         e = self.config['engines']['cube']
         cost = e | e.get('dtype_overrides', {}).get(a['dtype'], {})
+        rate = cost['throughput']
+        if e['scope'] == 'Core':
+            rate /= self.config['parameters']['pe_count']['value']
         return self.service.start(self.name, 'cube', work,
-                                  max(1, math.ceil(work / cost['throughput'])), cost['latency'], cycle)
+                                  max(1, math.ceil(work / rate)), cost['latency'], cycle)

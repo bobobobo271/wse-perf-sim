@@ -1,0 +1,768 @@
+{
+  "passed": true,
+  "total_cycles": 162,
+  "drained": true,
+  "conditions": {
+    "members": [
+      0,
+      1,
+      9
+    ],
+    "shard_bytes": 64,
+    "rounds": 2,
+    "source_pattern": "(epoch*19+node+offset) % 256",
+    "arrivals": "rank*11; later domains at cycle 8"
+  },
+  "clients": {
+    "client:demo:0/0": [
+      {
+        "event": "prepared",
+        "cycle": 0
+      },
+      {
+        "event": "submitted",
+        "cycle": 0
+      },
+      {
+        "event": "accepted",
+        "cycle": 2
+      },
+      {
+        "event": "independent_work_start",
+        "cycle": 2
+      },
+      {
+        "event": "source_released",
+        "cycle": 5
+      },
+      {
+        "event": "independent_work_end",
+        "cycle": 9
+      },
+      {
+        "event": "wait",
+        "cycle": 9
+      },
+      {
+        "event": "completion",
+        "cycle": 90,
+        "status": "success",
+        "safe_to_release": true
+      },
+      {
+        "event": "consume",
+        "cycle": 90
+      }
+    ],
+    "client:demo:0/1": [
+      {
+        "event": "prepared",
+        "cycle": 0
+      },
+      {
+        "event": "submitted",
+        "cycle": 11
+      },
+      {
+        "event": "accepted",
+        "cycle": 13
+      },
+      {
+        "event": "independent_work_start",
+        "cycle": 13
+      },
+      {
+        "event": "source_released",
+        "cycle": 16
+      },
+      {
+        "event": "independent_work_end",
+        "cycle": 20
+      },
+      {
+        "event": "wait",
+        "cycle": 20
+      },
+      {
+        "event": "completion",
+        "cycle": 89,
+        "status": "success",
+        "safe_to_release": true
+      },
+      {
+        "event": "consume",
+        "cycle": 89
+      }
+    ],
+    "client:demo:0/9": [
+      {
+        "event": "prepared",
+        "cycle": 0
+      },
+      {
+        "event": "submitted",
+        "cycle": 22
+      },
+      {
+        "event": "accepted",
+        "cycle": 24
+      },
+      {
+        "event": "independent_work_start",
+        "cycle": 24
+      },
+      {
+        "event": "source_released",
+        "cycle": 27
+      },
+      {
+        "event": "independent_work_end",
+        "cycle": 31
+      },
+      {
+        "event": "wait",
+        "cycle": 31
+      },
+      {
+        "event": "completion",
+        "cycle": 85,
+        "status": "success",
+        "safe_to_release": true
+      },
+      {
+        "event": "consume",
+        "cycle": 85
+      }
+    ],
+    "client:demo:1/0": [
+      {
+        "event": "prepared",
+        "cycle": 0
+      },
+      {
+        "event": "submitted",
+        "cycle": 8
+      },
+      {
+        "event": "rejected",
+        "cycle": 10,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 13
+      },
+      {
+        "event": "rejected",
+        "cycle": 15,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 18
+      },
+      {
+        "event": "rejected",
+        "cycle": 20,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 23
+      },
+      {
+        "event": "rejected",
+        "cycle": 25,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 28
+      },
+      {
+        "event": "rejected",
+        "cycle": 30,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 33
+      },
+      {
+        "event": "rejected",
+        "cycle": 35,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 38
+      },
+      {
+        "event": "rejected",
+        "cycle": 40,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 43
+      },
+      {
+        "event": "rejected",
+        "cycle": 45,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 48
+      },
+      {
+        "event": "rejected",
+        "cycle": 50,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 53
+      },
+      {
+        "event": "rejected",
+        "cycle": 55,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 58
+      },
+      {
+        "event": "rejected",
+        "cycle": 60,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 63
+      },
+      {
+        "event": "rejected",
+        "cycle": 65,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 68
+      },
+      {
+        "event": "rejected",
+        "cycle": 70,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 73
+      },
+      {
+        "event": "rejected",
+        "cycle": 75,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 78
+      },
+      {
+        "event": "rejected",
+        "cycle": 80,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 83
+      },
+      {
+        "event": "rejected",
+        "cycle": 85,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 88
+      },
+      {
+        "event": "rejected",
+        "cycle": 90,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 93
+      },
+      {
+        "event": "accepted",
+        "cycle": 95
+      },
+      {
+        "event": "independent_work_start",
+        "cycle": 95
+      },
+      {
+        "event": "source_released",
+        "cycle": 98
+      },
+      {
+        "event": "independent_work_end",
+        "cycle": 102
+      },
+      {
+        "event": "wait",
+        "cycle": 102
+      },
+      {
+        "event": "completion",
+        "cycle": 161,
+        "status": "success",
+        "safe_to_release": true
+      },
+      {
+        "event": "consume",
+        "cycle": 161
+      }
+    ],
+    "client:demo:1/1": [
+      {
+        "event": "prepared",
+        "cycle": 0
+      },
+      {
+        "event": "submitted",
+        "cycle": 8
+      },
+      {
+        "event": "rejected",
+        "cycle": 10,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 13
+      },
+      {
+        "event": "rejected",
+        "cycle": 15,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 18
+      },
+      {
+        "event": "rejected",
+        "cycle": 20,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 23
+      },
+      {
+        "event": "rejected",
+        "cycle": 25,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 28
+      },
+      {
+        "event": "rejected",
+        "cycle": 30,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 33
+      },
+      {
+        "event": "rejected",
+        "cycle": 35,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 38
+      },
+      {
+        "event": "rejected",
+        "cycle": 40,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 43
+      },
+      {
+        "event": "rejected",
+        "cycle": 45,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 48
+      },
+      {
+        "event": "rejected",
+        "cycle": 50,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 53
+      },
+      {
+        "event": "rejected",
+        "cycle": 55,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 58
+      },
+      {
+        "event": "rejected",
+        "cycle": 60,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 63
+      },
+      {
+        "event": "rejected",
+        "cycle": 65,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 68
+      },
+      {
+        "event": "rejected",
+        "cycle": 70,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 73
+      },
+      {
+        "event": "rejected",
+        "cycle": 75,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 78
+      },
+      {
+        "event": "rejected",
+        "cycle": 80,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 83
+      },
+      {
+        "event": "rejected",
+        "cycle": 85,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 88
+      },
+      {
+        "event": "rejected",
+        "cycle": 90,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 93
+      },
+      {
+        "event": "accepted",
+        "cycle": 95
+      },
+      {
+        "event": "independent_work_start",
+        "cycle": 95
+      },
+      {
+        "event": "source_released",
+        "cycle": 98
+      },
+      {
+        "event": "independent_work_end",
+        "cycle": 102
+      },
+      {
+        "event": "wait",
+        "cycle": 102
+      },
+      {
+        "event": "completion",
+        "cycle": 160,
+        "status": "success",
+        "safe_to_release": true
+      },
+      {
+        "event": "consume",
+        "cycle": 160
+      }
+    ],
+    "client:demo:1/9": [
+      {
+        "event": "prepared",
+        "cycle": 0
+      },
+      {
+        "event": "submitted",
+        "cycle": 8
+      },
+      {
+        "event": "rejected",
+        "cycle": 10,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 13
+      },
+      {
+        "event": "rejected",
+        "cycle": 15,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 18
+      },
+      {
+        "event": "rejected",
+        "cycle": 20,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 23
+      },
+      {
+        "event": "rejected",
+        "cycle": 25,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 28
+      },
+      {
+        "event": "rejected",
+        "cycle": 30,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 33
+      },
+      {
+        "event": "rejected",
+        "cycle": 35,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 38
+      },
+      {
+        "event": "rejected",
+        "cycle": 40,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 43
+      },
+      {
+        "event": "rejected",
+        "cycle": 45,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 48
+      },
+      {
+        "event": "rejected",
+        "cycle": 50,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 53
+      },
+      {
+        "event": "rejected",
+        "cycle": 55,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 58
+      },
+      {
+        "event": "rejected",
+        "cycle": 60,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 63
+      },
+      {
+        "event": "rejected",
+        "cycle": 65,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 68
+      },
+      {
+        "event": "rejected",
+        "cycle": 70,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 73
+      },
+      {
+        "event": "rejected",
+        "cycle": 75,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 78
+      },
+      {
+        "event": "rejected",
+        "cycle": 80,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 83
+      },
+      {
+        "event": "rejected",
+        "cycle": 85,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 88
+      },
+      {
+        "event": "rejected",
+        "cycle": 90,
+        "retryable": true,
+        "reason": "communication domain busy"
+      },
+      {
+        "event": "submitted",
+        "cycle": 93
+      },
+      {
+        "event": "accepted",
+        "cycle": 95
+      },
+      {
+        "event": "independent_work_start",
+        "cycle": 95
+      },
+      {
+        "event": "source_released",
+        "cycle": 98
+      },
+      {
+        "event": "independent_work_end",
+        "cycle": 102
+      },
+      {
+        "event": "wait",
+        "cycle": 102
+      },
+      {
+        "event": "completion",
+        "cycle": 156,
+        "status": "success",
+        "safe_to_release": true
+      },
+      {
+        "event": "consume",
+        "cycle": 156
+      }
+    ]
+  }
+}

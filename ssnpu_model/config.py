@@ -53,7 +53,8 @@ def validate_config(c):
                 raise ModelError(f'Invalid parameter {k}: {v}')
         for k, (_, _, _, scope) in ENGINES.items():
             e = c['engines'][k]
-            if e['scope'] != scope:
+            allowed_scopes = {scope, 'Core'} if 'wse' in c and k in ('cube', 'vector', 'exp', 'cast', 'reduce') else {scope}
+            if e['scope'] not in allowed_scopes:
                 raise ModelError(f'Invalid scope for {k}')
             for v in [e] + list(e.get('dtype_overrides', {}).values()):
                 rate, latency = v.get('throughput', e['throughput']), v.get('latency', e['latency'])
@@ -71,6 +72,14 @@ def validate_config(c):
         raise ModelError(f'Incomplete configuration: {exc}') from exc
     if "wse" in c:
         validate_wse(c)
+    if 'hbm' in c:
+        if 'wse' not in c:
+            raise ModelError('HBM requires a WSE clock configuration')
+        hbm = c['hbm']
+        for key, minimum in (('bandwidth_bytes_per_second', 1), ('startup_ns', 0)):
+            value = hbm.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < minimum:
+                raise ModelError(f'Invalid HBM parameter {key}')
     return c
 
 
@@ -103,6 +112,17 @@ def wse_config():
                          source=('WSE whitepaper v0.2' if s == 'documented' else
                                  'user-confirmed first-version model; 2026-11-13'))
                 for k, (v, u, s) in WSE_PARAMETERS.items()}
+    # WSE targets are whole-core budgets, statically partitioned across PEs.
+    # Keep default_config's synthetic per-PE profile unchanged.
+    for name in ('cube', 'vector', 'exp', 'cast', 'reduce'):
+        c['engines'][name]['scope'] = 'Core'
+        c['engines'][name]['meaning'] = 'Whole-core budget, equally partitioned across configured PEs'
+    c['engines']['cube']['source'] = 'WSE whitepaper v0.2: FP16 4096 MAC/cycle/core target'
+    for name in ('vector', 'cast'):
+        c['engines'][name]['unit'] = 'byte/cycle'
+        c['engines'][name]['source'] = 'WSE whitepaper v0.2: 256 B/cycle/core target; equal PE partition assumed'
+    # exp/reduce retain synthetic operation rates, now aggregate and additionally
+    # capped by the whole-core vector byte budget in Vector.start.
     for k in ('local_capacity', 'shared_capacity'):
         c['parameters'][k]['status'] = 'pending'
     for k in ('shared_read', 'shared_write'):

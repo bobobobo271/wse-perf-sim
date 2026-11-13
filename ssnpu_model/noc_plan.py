@@ -6,8 +6,6 @@ this module and the runtime depend only on Python and ssnpu_model.
 import copy
 import hashlib
 import json
-import math
-from collections import deque
 from pathlib import Path
 
 from .errors import ModelError
@@ -15,132 +13,14 @@ from .records import Instruction
 from .tiles import nbytes, version_key
 
 
-def integer(value, name, minimum=0):
-    if type(value) is not int or value < minimum:
-        raise ModelError(f'Invalid {name}: {value!r}')
-    return value
-
-
-def node_id(value):
-    if integer(value, 'node') >= 40:
-        raise ModelError('WSE40 node must be in 0..39')
-    return value
-
-
-def neighbors(node):
-    row, col = divmod(node, 8)
-    return tuple(n for n in (node - 8 if row else -1, node + 8 if row < 4 else -1,
-                            node - 1 if col else -1, node + 1 if col < 7 else -1) if n >= 0)
-
-
-def route_bitmap(passing, landing):
-    passing, landing = set(passing), set(landing)
-    if not landing <= passing:
-        raise ModelError('Landing nodes must be passing nodes')
-    return sum((3 if n in landing else 2) << (2 * node_id(n)) for n in passing)
-
-
-def route_tree(source, bits):
-    node_id(source)
-    if integer(bits, 'route_bits') >= 1 << 80:
-        raise ModelError('Route bitmap exceeds 80 bits')
-    pairs = [(bits >> (2 * n)) & 3 for n in range(40)]
-    active = {n for n, p in enumerate(pairs) if p & 2}
-    landing = {n for n, p in enumerate(pairs) if p & 1}
-    if 1 in pairs or source not in active or not landing:
-        raise ModelError('Illegal route: 01, absent source, or no landing node')
-    children, distance, seen = {}, {source: 0}, {source}
-    queue = deque([(source, None)])
-    while queue:
-        node, parent = queue.popleft()
-        children[node] = tuple(n for n in neighbors(node) if n in active and n != parent)
-        for child in children[node]:
-            if child in seen:
-                raise ModelError('Route induced subgraph contains a cycle')
-            seen.add(child)
-            distance[child] = distance[node] + 1
-            queue.append((child, node))
-    if seen != active:
-        raise ModelError('Disconnected route')
-    return children, landing, distance
-
-
-def multicast_routes(source, destinations):
-    """Cover destinations once, merging shortest paths into induced trees."""
-    node_id(source)
-    if not destinations or len(set(destinations)) != len(destinations):
-        raise ModelError('Provide unique nonempty destinations')
-    for destination in destinations:
-        node_id(destination)
-    parents, queue = {source: None}, deque([source])
-    while queue:
-        node = queue.popleft()
-        for peer in sorted(neighbors(node)):
-            if peer not in parents:
-                parents[peer] = node
-                queue.append(peer)
-    trees = []
-    for destination in sorted(destinations):
-        path, node = set(), destination
-        while node is not None:
-            path.add(node)
-            node = parents[node]
-        for passing, landing in trees:
-            union = passing | path
-            edges = sum(peer in union for node in union for peer in neighbors(node)) // 2
-            # The union of source-rooted paths is connected; n-1 edges proves a tree.
-            if edges == len(union) - 1:
-                passing.update(path)
-                landing.add(destination)
-                break
-        else:
-            trees.append((path, {destination}))
-    return [route_bitmap(passing, landing) for passing, landing in trees]
-
-
-def transmissions(entry, parameters):
-    """Normalize explicit single-window and automatically planned multi-tree sends."""
-    if 'routes' in entry:
-        return entry['routes']
-    start = entry['window'] * parameters['slot_cycles']
-    return [dict(route_bits=entry['route_bits'], start_cycle=start,
-                 end_cycle=start + parameters['slot_cycles'])]
+from .communication.routing import integer, node_id, neighbors, route_bitmap, route_tree, multicast_routes, transmissions
+from .communication.protocol import CommRequest, DataRange, digest, platform_spec
+from dataclasses import asdict
+from .communication.compiler import compile_phase as compile_routes, make_installation
 
 
 def compile_phase(phase, config):
-    """Plan copy traffic in conservative, nonoverlapping whole-packet windows.
-
-    Uses existing NoC and Shared-write service parameters. A packet drains its
-    tree and destination writes before the following tree starts. No new hardware
-    register format or payload storage is required by this behavioral model.
-    """
-    if phase.get('routing') != 'auto':
-        if 'routing' in phase:
-            raise ModelError('Unknown routing mode')
-        return
-    parameters = {key: value['value'] for key, value in config['wse'].items()}
-    payload = parameters['link_bytes_per_cycle'] - parameters['header_bytes']
-    participants = {node_id(entry['core']) for entry in phase['nodes']}
-    write = config['engines']['shared_write']
-    cursor = 0
-    for entry in sorted(phase['nodes'], key=lambda item: item['core']):
-        if any(field in entry for field in ('routes', 'route_bits', 'window')):
-            raise ModelError('Automatic routing takes destinations, not precompiled routes/windows')
-        destinations = entry.get('destinations', sorted(participants))
-        if not set(destinations) <= participants:
-            raise ModelError('Route lands outside registered participants')
-        size = integer(entry['nbytes'], 'nbytes', 1)
-        flits = math.ceil(size / payload)
-        # Two core cycles cover edge rounding and a margin at the visibility boundary.
-        service = math.ceil(size / write['throughput']) + write['latency'] + 2
-        write_cycles = math.ceil(service * parameters['noc_clock_hz'] / parameters['core_clock_hz'])
-        entry['routes'] = []
-        for bits in multicast_routes(entry['core'], destinations):
-            _, _, distance = route_tree(entry['core'], bits)
-            duration = (parameters['tx_cdc_cycles'] + flits + max(distance.values()) * parameters['hop_cycles']
-                        + parameters['rx_cdc_cycles'] + write_cycles + parameters['guard_cycles'])
-            entry['routes'].append(dict(route_bits=bits, start_cycle=cursor, end_cycle=cursor + duration))
-            cursor += duration
+    return compile_routes(phase, platform_spec(config))
 
 
 def allgather_group(sources, targets, owners, shard_bytes, *, name='allgather', epoch=0):
@@ -158,14 +38,14 @@ def allgather_group(sources, targets, owners, shard_bytes, *, name='allgather', 
 
 
 def operation_id(phase, core, kind):
-    return f'calendar:{phase}:{core}:{kind}'
+    return f'comm:{phase}:{core}:{kind}'
 
 
 def attach_plan(trace, plan):
-    """Insert three semantic commands per node: post, send/drain, await/publish.
+    """Compile one submit and one token wait per node, plus separate WSE CalReg.
 
-    Alignment is performed by the NoC once all descriptors/data are staged and
-    all receive ports admitted. Post completes independently from await.
+    Routing and timeslots are jointly compiled here, never by a running core.
+    Only requests and token waits are visible in the core instruction stream.
     """
     if isinstance(plan, (str, Path)):
         data = Path(plan).read_bytes()
@@ -259,21 +139,31 @@ def attach_plan(trace, plan):
             if e.get('source_offset', 0) + e['nbytes'] > nbytes(source):
                 raise ModelError('Source range exceeds valid Tile bytes')
             owner = trace.instructions[e['owner']]
-            ids = {kind: operation_id(name, e['core'], kind) for kind in ('post', 'send', 'receive')}
+            ids = {kind: operation_id(name, e['core'], kind) for kind in ('submit', 'wait')}
             target = targets[version_key(e['target'])]
-            target['producer'] = ids['receive']
+            target['producer'] = ids['wait']
             e['target'] = target
             e['expected'] = expected[e['core']]
-            for offset, kind in enumerate(('post', 'send', 'receive'), 1):
-                raw = dict(owner.raw, ir_op='calendar.' + kind, op_id=ids[kind],
-                           inputs=[source] if kind == 'send' else [],
-                           outputs=[target] if kind == 'receive' else [],
+            request = CommRequest(token=f'{name}/{e["core"]}', endpoint=f'core:{e["core"]}/comm',
+                node=e['core'], operation='allgather', epoch=epoch, domain=name, members=tuple(sorted(participants)),
+                version='', route_bits=tuple(t['route_bits'] for t in transmissions(e, parameters)),
+                source=DataRange(version_key(source), e.get('source_offset', 0), e['nbytes'], nbytes(source)),
+                destination=DataRange(version_key(target), 0, nbytes(target), nbytes(target)),
+                destination_offset=e['destination_offset'])
+            for offset, kind in enumerate(('submit', 'wait'), 1):
+                raw = dict(owner.raw, ir_op='comm.' + kind, op_id=ids[kind],
+                           inputs=[source] if kind == 'submit' else [],
+                           outputs=[target] if kind == 'wait' else [],
                            memory_accesses=[], parameters={},
                            ssnpu=dict(owner.raw['ssnpu'], shared_inputs=[]),
-                           calendar=dict(phase=name, core=e['core'], reserve_for=ids['receive'], nbytes=e['nbytes']))
+                           communication=dict(phase=name, token=request.token, reserve_for=ids['wait'], request=asdict(request)))
+                if kind == 'submit' and e.get('release_source', False):
+                    raw['ssnpu']['shared_inputs'] = [dict(use_id=ids['submit'], operand=0,
+                        version_id=source['shared_version'], retention='last-use',
+                        participants=[raw['thread_id']])]
                 deps = previous | set(e.get('after', []))
-                if kind != 'post':
-                    deps = deps | {ids['post']}
+                if kind == 'wait':
+                    deps = deps | {ids['submit']}
                 trace.add(Instruction(ids[kind], owner.core, owner.pe, owner.task, owner.block,
                                       owner.age + number * 3 + offset, raw, deps=deps, sync=set(owner.sync)))
                 new_ids.add(ids[kind])
@@ -286,10 +176,15 @@ def attach_plan(trace, plan):
             for i in original:
                 for obj in i.raw.get('inputs', []):
                     if obj['kind'] == 'tile' and version_key(obj) == version_key(target):
-                        obj['producer'] = ids['receive']
+                        obj['producer'] = ids['wait']
         objects.update(targets)
         previous = new_ids
     trace.calendar_phases = phases
+    trace.comm_installation = make_installation(phases, platform_spec(trace.config))
+    for instruction in trace.instructions.values():
+        if instruction.raw['ir_op'].startswith('comm.'):
+            instruction.raw['communication']['request']['version'] = trace.comm_installation['version']
+
 
 
 def allgather_40(sources, row_targets, column_targets, owners, shard_bytes):

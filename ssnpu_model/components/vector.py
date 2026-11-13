@@ -2,13 +2,15 @@
 import math
 
 from ..errors import ModelError
+from ..tiles import DTYPES
 from .execution import ExecutionUnit
 
 
 class Vector(ExecutionUnit):
     ELEMENTWISE = {'full', 'add', 'adds', 'sub', 'subs', 'mul', 'muls', 'div', 'divs',
                    'maximum', 'minimum', 'neg', 'abs', 'sqrt', 'rsqrt', 'relu',
-                   'row_expand_sub', 'row_expand_add', 'row_expand_mul', 'row_expand_div'}
+                   'row_expand_sub', 'row_expand_add', 'row_expand_mul', 'row_expand_div',
+                   'slice', 'concat'}
 
     def start(self, instruction, index, cycle):
         r = instruction.raw
@@ -25,5 +27,14 @@ class Vector(ExecutionUnit):
             raise ModelError(f'Unknown operation {r["ir_op"]} at {instruction.id}')
         e = self.config['engines'][engine]
         cost = e | e.get('dtype_overrides', {}).get(obj['dtype'], {})
+        rate = cost['throughput']
+        width = DTYPES[obj['dtype']]
+        if cost['unit'] == 'byte/cycle':
+            rate /= width
+        if e['scope'] == 'Core':
+            rate /= self.config['parameters']['pe_count']['value']
+            vector = self.config['engines']['vector']
+            if vector['scope'] == 'Core' and vector['unit'] == 'byte/cycle':
+                rate = min(rate, vector['throughput'] / width / self.config['parameters']['pe_count']['value'])
         return self.service.start(self.name, engine, work,
-                                  max(1, math.ceil(work / cost['throughput'])), cost['latency'], cycle)
+                                  max(1, math.ceil(work / rate)), cost['latency'], cycle)

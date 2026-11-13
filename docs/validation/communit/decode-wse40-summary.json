@@ -1,0 +1,481 @@
+{
+  "spec": {
+    "batch": 1,
+    "query_heads": 32,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "sequence_length": 1280,
+    "sequence_splits": 5,
+    "tile_tokens": 128,
+    "hbm_chunk_tokens": 256,
+    "hbm_gbps": 256.0,
+    "hbm_startup_ns": 0.0,
+    "pe_count": 4,
+    "seed": 7
+  },
+  "total_cycles": 33919,
+  "total_time_us": 24.22785714285714,
+  "single_core_time_us": 67.92,
+  "instruction_count": 8376,
+  "validation": {
+    "multicore_vs_single": {
+      "passed": true,
+      "max_abs_error": 1.231534406542778e-05,
+      "rmse": 3.2758342012319705e-06,
+      "max_tolerance_ratio": 0.024492148038613302,
+      "atol": 0.0005,
+      "rtol": 0.005
+    },
+    "multicore_vs_dense": {
+      "passed": true,
+      "max_abs_error": 1.2733849910739892e-05,
+      "rmse": 2.9144517811204626e-06,
+      "max_tolerance_ratio": 0.02447302837618735,
+      "atol": 0.0005,
+      "rtol": 0.005
+    },
+    "single_vs_dense": {
+      "passed": true,
+      "max_abs_error": 1.036548743045887e-05,
+      "rmse": 2.947923043618791e-06,
+      "max_tolerance_ratio": 0.01818968776193963,
+      "atol": 0.0005,
+      "rtol": 0.005
+    },
+    "conditions": {
+      "input_dtype": "float16",
+      "matmul_accumulation": "float32",
+      "probability_cast": "float16 before PV",
+      "state_dtype": "float32",
+      "dense_reference": "float64",
+      "seed": 7,
+      "same_inputs": true,
+      "mask": "All supplied KV tokens visible to this decode query",
+      "single_core": "All batch/head groups serialized on core 0, same PE count, tiles and HBM bandwidth"
+    },
+    "passed": true
+  },
+  "layout": {
+    "mapping": [
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 0,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 8,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 16,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 24,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 0,
+        "core": 32,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 1,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 9,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 17,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 25,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 1,
+        "core": 33,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 2,
+        "core": 2,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 2,
+        "core": 10,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 2,
+        "core": 18,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 2,
+        "core": 26,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 2,
+        "core": 34,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 3,
+        "core": 3,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 3,
+        "core": 11,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 3,
+        "core": 19,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 3,
+        "core": 27,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 3,
+        "core": 35,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 4,
+        "core": 4,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 4,
+        "core": 12,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 4,
+        "core": 20,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 4,
+        "core": 28,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 4,
+        "core": 36,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 5,
+        "core": 5,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 5,
+        "core": 13,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 5,
+        "core": 21,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 5,
+        "core": 29,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 5,
+        "core": 37,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 6,
+        "core": 6,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 6,
+        "core": 14,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 6,
+        "core": 22,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 6,
+        "core": 30,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 6,
+        "core": 38,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 7,
+        "core": 7,
+        "rank": 0,
+        "start": 0,
+        "end": 256,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 7,
+        "core": 15,
+        "rank": 1,
+        "start": 256,
+        "end": 512,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 7,
+        "core": 23,
+        "rank": 2,
+        "start": 512,
+        "end": 768,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 7,
+        "core": 31,
+        "rank": 3,
+        "start": 768,
+        "end": 1024,
+        "wave": 0
+      },
+      {
+        "batch": 0,
+        "kv_head": 7,
+        "core": 39,
+        "rank": 4,
+        "start": 1024,
+        "end": 1280,
+        "wave": 0
+      }
+    ],
+    "sram_reserved_bytes": {
+      "0": 265216,
+      "8": 265216,
+      "16": 265216,
+      "24": 265216,
+      "32": 265216,
+      "1": 265216,
+      "9": 265216,
+      "17": 265216,
+      "25": 265216,
+      "33": 265216,
+      "2": 265216,
+      "10": 265216,
+      "18": 265216,
+      "26": 265216,
+      "34": 265216,
+      "3": 265216,
+      "11": 265216,
+      "19": 265216,
+      "27": 265216,
+      "35": 265216,
+      "4": 265216,
+      "12": 265216,
+      "20": 265216,
+      "28": 265216,
+      "36": 265216,
+      "5": 265216,
+      "13": 265216,
+      "21": 265216,
+      "29": 265216,
+      "37": 265216,
+      "6": 265216,
+      "14": 265216,
+      "22": 265216,
+      "30": 265216,
+      "38": 265216,
+      "7": 265216,
+      "15": 265216,
+      "23": 265216,
+      "31": 265216,
+      "39": 265216
+    },
+    "q_distribution": "Each worker reads its Q copy from HBM; counted explicitly.",
+    "output": "Every worker merges; only rank 0 writes O to HBM.",
+    "kv_residency": "Cold per invocation; no cross-step SRAM KV reuse.",
+    "collectives": "Group AllGather, conservatively serialized automatic Calendar schedule."
+  },
+  "hbm_bytes": 5300224,
+  "software": {
+    "python": "3.11.16 (main, Sep  1 2026, 14:08:22) [Clang 22.1.3 ]",
+    "numpy": "2.4.6"
+  },
+  "input_sha256": "d47060d54087bb4d70decfbffd19909407581859a40fb472d7b145b45cda91be",
+  "limits": [
+    "Synthetic uncalibrated cycle model; fixed equal PE compute partitions.",
+    "Cold KV cache in HBM each invocation; Q copies read separately by workers.",
+    "Automatic Calendar packets/groups conservatively serialized.",
+    "All workers merge; rank 0 writes each head group output.",
+    "No projections, RoPE, KV append, paging or cross-step cache model."
+  ]
+}

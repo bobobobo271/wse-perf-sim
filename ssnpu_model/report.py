@@ -2,6 +2,7 @@
 from collections import Counter, defaultdict
 
 from .components import Cube, Vector, TLSU, Scheduler, TileReg
+from .components.comm import CommPort
 
 
 def build_report(sim):
@@ -13,7 +14,7 @@ def build_report(sim):
     instruction_events = []
     milestones = {'allocation_request', 'allocated', 'issue', 'received', 'operands_ready',
                   'compute_start', 'compute_end', 'writeback_start', 'writeback_end',
-                  'complete', 'rob_complete', 'retire'}
+                  'complete', 'rob_complete', 'retire', 'accepted', 'source_read_complete'}
     for name, component in sorted(sim.components.items()):
         observations.extend((time, name, index, key, fields)
                             for index, (time, key, fields) in enumerate(component.observations))
@@ -27,7 +28,7 @@ def build_report(sim):
         if isinstance(component, (Scheduler, TileReg)):
             for key, counts in component.waits.items():
                 waits[key].update(counts)
-        if isinstance(component, (Cube, Vector, TLSU)):
+        if isinstance(component, (Cube, Vector, TLSU, CommPort)):
             stage_waits.update(component.waits)
     for time, name, _, key, fields in sorted(observations, key=lambda r: r[:3]):
         row = timeline[key]
@@ -91,9 +92,15 @@ def build_report(sim):
     }
     if sim.clock.log_messages:
         report['messages'] = sim.clock.messages
+    if 'wse' in sim.config:
+        report['total_time_ns'] = cycle * 1e9 / sim.config['wse']['core_clock_hz']['value']
+    if sim.hbm is not None:
+        report['hbm_events'] = sim.hbm.events
+        report['assumptions'].append('HBM is one chip-wide FIFO bandwidth server; startup serialized; SRAM endpoint read/write charged separately.')
     if sim.noc is not None:
         report['noc'] = sim.noc.report()
         report['communication_plan'] = sim.trace.communication_plan
+        report['communication_installation'] = sim.trace.comm_installation
         elapsed = cycle * sim.noc.core_ns
         report['total_time_ns'] = float(elapsed)
         report['total_time_ns_exact'] = str(elapsed)

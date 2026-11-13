@@ -71,7 +71,7 @@ class AutomaticCalendarTests(unittest.TestCase):
         for core in (0, 1, 8, 9):
             published, = [e for e in events if e['kind'] == 'receive_published' and e['node'] == core]
             self.assertGreaterEqual(published['time_ns'], max(e['time_ns'] for e in writes if e['node'] == core))
-            self.assertGreater(rows[f'consume{core}']['issue'], rows[f'calendar:allgather:{core}:receive']['complete'])
+            self.assertGreater(rows[f'consume{core}']['issue'], rows[f'comm:allgather:{core}:wait']['complete'])
         self.assertEqual(self.plan, original)
         self.assertEqual(report['communication_plan'], original)
 
