@@ -90,3 +90,5 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 [DESIGN.md](DESIGN.md) 说明组件协议、存储生命周期、可手算周期和 load→matmul→store 的代码阅读顺序。[examples/](examples/README.md) 的 capture、源码和历史报告保留原样，旧报告周期仅供比较。
 
 [从 gfrun 捕获 PTO tile trace](docs/gfrun-tile-trace.md) 记录同一 ELF 驱动两套性能模型的备选路线、标准紧凑格式需要补充的运行时信息，以及当前目标编译工具链尚未就绪的限制。
+
+[SSM 完整 benchmark 结果](docs/benchmarks/ssm-native-results.md) 和 [首轮参数校准](docs/benchmarks/ssm-calibration.md) 包含单 PE 固定用例的周期、可选校准配置与复现命令。`ssm_baseline.py --timeout 0` 支持无时间限制运行；`calibrate_ssm.py` 可基于已保存的 SSM 结果重做拟合。
