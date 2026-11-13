@@ -9,10 +9,10 @@ import json
 import unittest
 
 from examples.communication.driver import build_demo, run_demo
-from wse_perf_sim.models.noc.protocol import (
+from models.noc.protocol import (
     Accepted, Rejected, Completion, DataCommand, DataReply, request_from_dict)
-from wse_perf_sim.models.noc.unit import CommUnit
-from wse_perf_sim.errors import ModelError
+from models.noc.unit import CommUnit
+from errors import ModelError
 import test_noc
 
 
@@ -175,8 +175,8 @@ class CoreAdapterTests(unittest.TestCase):
         self.assertLess(background['complete'], timeline['comm:pair:0:wait']['complete'])
 
     def test_core_source_lifetime_extends_past_acceptance(self):
-        from wse_perf_sim.frontend.capture import TraceAdapter
-        from wse_perf_sim.simulator import Simulator
+        from frontend.capture import TraceAdapter
+        from simulator import Simulator
         trace = TraceAdapter(self.path, self.config, self.plan)
         for entry in self.plan['phases'][0]['nodes']:
             trace.versions[tuple(entry['source_version'])].retained = False

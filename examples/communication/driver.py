@@ -8,13 +8,13 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 
-from wse_perf_sim.runtime.clock import Clock
-from wse_perf_sim.runtime.component import Component
-from wse_perf_sim.models.noc.compiler import compile_phase, make_installation
-from wse_perf_sim.models.noc.protocol import (
+from runtime.clock import Clock
+from runtime.component import Component
+from models.noc.compiler import compile_phase, make_installation
+from models.noc.protocol import (
     Accepted, Rejected, Completion, CommRequest, DataRange, DataCommand, DataReply, platform_spec)
-from wse_perf_sim.models.noc.unit import CommUnit
-from wse_perf_sim.config import wse_config
+from models.noc.unit import CommUnit
+from config import wse_config
 
 
 class ByteClient(Component):

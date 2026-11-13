@@ -2,7 +2,7 @@
 
 纯 Python WSE 性能仿真器，包含超标量 NPU 核、Calendar NoC（片上网络）和 HBM（高带宽内存）模型。每核的 NoC 端点是 SharedTileReg，SRAM 作为核内存储。支持 PyPTO capture 导入、显式通信计划、Decode 数值验证和时间线导出。
 
-代码按职责分层，核模型、NoC 和 HBM 位于 `wse_perf_sim/models/` 下的平级目录。输入适配在 `frontend/`，负载生成在 `workloads/`，报告和绘图在 `analysis/`。完整目录、依赖边界及旧路径对照见 [项目结构](docs/STRUCTURE.md)。
+代码按职责分层，核模型、NoC 和 HBM 位于 `models/` 下的平级目录。输入适配在 `frontend/`，负载生成在 `workloads/`，报告和绘图在 `analysis/`。完整目录、依赖边界及旧路径对照见 [项目结构](docs/STRUCTURE.md)。
 
 需要 Python 3.11 或更新版本。在仓库根目录可以直接运行以下命令；也可通过 `python3 -m pip install -e .` 安装，随后使用 `wse-perf-sim` 和 `wse-perf-trace` 命令。Decode 数值验证与绘图另需 `python3 -m pip install -e '.[decode]'`。
 
@@ -14,7 +14,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m unittest discover -s tests 
 
 [WSE 参数与执行语义](docs/WSE.md) · [CommUnit 解耦接口](docs/COMMUNIT.md) · [本次数值与时序验证](docs/COMMUNIT_VALIDATION.md) · [历史验证](docs/VALIDATION.md)
 
-无通信计划时按原逻辑验证配置运行。新代码使用 `wse_perf_sim`；旧的 `from ssnpu_model import simulate` 和 `python -m ssnpu_model` 保留薄兼容入口。旧内部模块路径已迁移，见结构文档的路径对照表。
+无通信计划时按原逻辑验证配置运行。统一使用 `from api import simulate` 和 `python -m cli`，原模块的迁移路径见结构文档的对照表。
 
 **核模型与使用说明**
 
@@ -25,7 +25,7 @@ Python 3.11+、仅标准库。读取 workload capture v2 / SSNPU v1，采用独�
 从仓库根目录执行，所有新产物写入仓内 `workspace/`：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m wse_perf_sim \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m cli \
   examples/matmul/capture --config config/logic-validation.json \
   --output workspace/ssnpu-components/matmul.json
 
@@ -36,12 +36,12 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 tests/replay_captures.py \
   --output-dir workspace/ssnpu-components/replay
 ```
 
-公开 API 为 `from wse_perf_sim import simulate`；`simulate(capture_dir, config=None)` 返回 JSON 可序列化报告，config 可为字典或 JSON 文件路径，异常类型为 ModelError。设置顶层 `message_log: true` 开启带发送/接收周期的消息日志。需要观察中间状态时，从 `wse_perf_sim.simulator` 导入 `Simulator`，从 `wse_perf_sim.frontend.capture` 导入 `TraceAdapter`，构建 `Simulator(TraceAdapter(path, config), config)` 并调用 snapshot；测试可通过 tick_order 指定组件调用顺序。
+公开 API 为 `from api import simulate`；`simulate(capture_dir, config=None)` 返回 JSON 可序列化报告，config 可为字典或 JSON 文件路径，异常类型为 ModelError。设置顶层 `message_log: true` 开启带发送/接收周期的消息日志。需要观察中间状态时，从 `simulator` 导入 `Simulator`，从 `frontend.capture` 导入 `TraceAdapter`，构建 `Simulator(TraceAdapter(path, config), config)` 并调用 snapshot；测试可通过 tick_order 指定组件调用顺序。
 
 指令打点始终包含在报告的 `instruction_events` 中，也可导出为按周期排列的 JSONL，用于绘制流水图：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m wse_perf_sim \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m cli \
   examples/matmul/capture --output workspace/ssnpu-components/pipeline/matmul.json \
   --event-log workspace/ssnpu-components/pipeline/matmul.events.jsonl
 ```
@@ -53,7 +53,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m wse_perf_sim \
 打点日志可用独立脚本转换为原生 Perfetto protobuf，无需重跑仿真或安装第三方库：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m wse_perf_sim.analysis.perfetto \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m analysis.perfetto \
   workspace/ssnpu-components/pipeline/matmul.events.jsonl \
   --output workspace/ssnpu-components/pipeline/matmul.pftrace \
   --cycle-ns 1
@@ -76,7 +76,7 @@ Core 0
 
 执行单元的 active 子轨道只覆盖 received→complete：从单元接收命令，到全部输出写回并发送完成通知，包含操作数访问、资源等待、计算和写回。ROB 通知及退休等待放到 Core 的独立 ROB 分组，Scheduler 的分配和发射打点另列，全部原始打点保留为瞬时事件。active 轨道重叠表示多条命令同时在单元内等待或推进；compute 阶段包含服务及结果延迟，不能当作纯资源占用。旧控制/view 日志没有 received，使用 issue→complete 并在详情中标明起点事件。
 
-默认 1 cycle=1 ns 是用于查看的合成映射，不代表硬件频率；可用 --cycle-ns 调整，原生时间戳四舍五入到整纳秒，事件详情仍保留全部原始周期。重叠指令分轨避免非嵌套区间；缺失关键打点、重复事件或时序冲突会报错。Python 调用 `wse_perf_sim.analysis.perfetto.to_pftrace(events, cycle_ns=1)` 返回可直接保存的 bytes。
+默认 1 cycle=1 ns 是用于查看的合成映射，不代表硬件频率；可用 --cycle-ns 调整，原生时间戳四舍五入到整纳秒，事件详情仍保留全部原始周期。重叠指令分轨避免非嵌套区间；缺失关键打点、重复事件或时序冲突会报错。Python 调用 `analysis.perfetto.to_pftrace(events, cycle_ns=1)` 返回可直接保存的 bytes。
 
 为兼容旧工具，输出文件后缀为 .json 时仍导出 [Trace Event JSON](https://perfetto.dev/docs/getting-started/other-formats#chrome-json-format)，也可用 --format json/pftrace 显式指定。JSON 轨道保持平铺，完整的可折叠层级需要 .pftrace。JSON 的 ts/dur 使用微秒；旧 API `to_perfetto(events, cycle_ns=1)` 仍返回 JSON 字典。
 
@@ -105,7 +105,7 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 | workloads/decode.py / decode_numeric.py | Decode 负载生成与 NumPy 数值验证 |
 | analysis/report.py | 只读汇总组件状态、时间线和统计 |
 | analysis/perfetto.py / pipeline.py | 指令和资源时间线导出、泳道图 |
-| cli.py / __main__.py | CLI |
+| cli.py | CLI |
 
 报告包含总周期、最后指令完成周期、Core/PE 完成时间、发射/访问/计算/写回/完成/退休时间线、组件状态、服务统计、存储峰值及分配释放事件、等待原因、配置与输入 SHA256。总周期包含控制节点、退休、释放和消息收尾。完成广播和 tile 释放不等待退休。停滞异常包含各组件的队列、依赖、请求、占用版本和等待条件。
 
@@ -113,7 +113,7 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 
 [DESIGN.md](DESIGN.md) 说明组件协议、存储生命周期、可手算周期和 load→matmul→store 的代码阅读顺序。[examples/](examples/README.md) 的 capture、源码和历史报告保留原样，旧报告周期仅供比较。
 
-任意节点组的 AllGather 可用 `wse_perf_sim.frontend.communication.allgather_group` 自动生成多树路由和发送窗口，再交给 `simulate(..., communication_plan=plan)`。用法见 [WSE 自动规划](docs/WSE.md#自动规划)。
+任意节点组的 AllGather 可用 `frontend.communication.allgather_group` 自动生成多树路由和发送窗口，再交给 `simulate(..., communication_plan=plan)`。用法见 [WSE 自动规划](docs/WSE.md#自动规划)。
 
 [从 gfrun 捕获 PTO tile trace](docs/gfrun-tile-trace.md) 记录同一 ELF 驱动两套性能模型的备选路线、标准紧凑格式需要补充的运行时信息，以及当前目标编译工具链尚未就绪的限制。
 

@@ -8,13 +8,13 @@ import sys
 
 import numpy as np
 
-from wse_perf_sim import simulate
-from wse_perf_sim.workloads.decode import DecodeSpec, make_decode_capture
-from wse_perf_sim.workloads.decode_numeric import make_inputs, execute_capture, dense_reference, compare, validate_inputs
-from wse_perf_sim.analysis.pipeline import export_pipeline, export_resource_trace
-from wse_perf_sim.analysis.perfetto import to_pftrace, to_perfetto
-from wse_perf_sim.frontend.capture import TraceAdapter
-from wse_perf_sim.models.noc.protocol import platform_spec
+from api import simulate
+from workloads.decode import DecodeSpec, make_decode_capture
+from workloads.decode_numeric import make_inputs, execute_capture, dense_reference, compare, validate_inputs
+from analysis.pipeline import export_pipeline, export_resource_trace
+from analysis.perfetto import to_pftrace, to_perfetto
+from frontend.capture import TraceAdapter
+from models.noc.protocol import platform_spec
 
 
 def export_communication(trace, config, output):

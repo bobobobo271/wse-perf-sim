@@ -1,6 +1,6 @@
 # 项目结构与依赖边界
 
-项目以 `wse_perf_sim` 为统一 Python 包。硬件模型、输入适配、算子负载和结果分析分别存放；原来的 `ssnpu_model` 仅保留公共入口兼容。
+功能目录和入口文件直接位于仓库根目录。硬件模型、输入适配、算子负载和结果分析分别存放，不再套一层同名 Python 包；原来的 `ssnpu_model` 目录也已移除。
 
 这次调整保留时序公式、消息交付规则、硬件参数和报告字段。文件迁移不增加新的抽象基类、插件注册或多套执行框架。
 
@@ -11,46 +11,44 @@ wse-perf-sim/
 ├── pyproject.toml                 安装信息、可选依赖、命令入口
 ├── README.md                      使用入口
 ├── DESIGN.md                      核内消息、生命周期和时序设计
-├── wse_perf_sim/
-│   ├── api.py                     simulate 公共接口
-│   ├── simulator.py               装配整机、推进周期、诊断停滞
-│   ├── cli.py / __main__.py        命令行入口
-│   ├── config.py                  配置默认值与校验
-│   ├── records.py / tiles.py       指令、版本、Tile 大小等共享定义
-│   ├── errors.py                  统一异常
-│   ├── models/
-│   │   ├── ssnpu/                 超标量 NPU 核模型
-│   │   │   ├── scheduler.py       依赖、分配与发射
-│   │   │   ├── rob.py             重排序缓冲区准入与按序退休
-│   │   │   ├── tile.py            Local/SharedTileReg 容量、版本与端口
-│   │   │   ├── cube.py / vector.py 矩阵和向量执行单元
-│   │   │   ├── execution.py       执行单元的操作数、计算和写回流程
-│   │   │   ├── tlsu.py            核内 SRAM 访问与内存搬运
-│   │   │   ├── comm.py            核侧通信适配 CommPort
-│   │   │   └── sync.py            barrier 与 task 同步
-│   │   ├── noc/                   Calendar 片上网络
-│   │   │   ├── unit.py            CommUnit 网络执行与数据发布
-│   │   │   ├── routing.py         路由树、位图与链路遍历
-│   │   │   ├── compiler.py        路由与时隙编译、安装配置
-│   │   │   └── protocol.py        请求、数据访问、完成通知合同
-│   │   └── memory/
-│   │       └── hbm.py             全片 HBM 带宽服务
-│   ├── runtime/
-│   │   ├── component.py           组件队列和观察记录
-│   │   ├── clock.py               消息交付与外部网络事件接入
-│   │   ├── protocol.py            核内及存储消息、消息信封与目的命名
-│   │   └── service.py             资源占用时间与结果延迟
-│   ├── frontend/
-│   │   ├── capture.py             capture 解析、映射和校验
-│   │   └── communication.py       显式通信计划与 Tile 版本绑定
-│   ├── workloads/
-│   │   ├── decode.py              Decode 负载生成
-│   │   └── decode_numeric.py      同一 capture 的数值执行与参考对照
-│   └── analysis/
-│       ├── report.py              只读汇总仿真状态和事件
-│       ├── perfetto.py            原生 Perfetto / JSON 时间线导出
-│       └── pipeline.py            资源时间线与当前 Decode 泳道图
-├── ssnpu_model/                   两个旧入口转发文件
+├── api.py                     simulate 公共接口
+├── simulator.py               装配整机、推进周期、诊断停滞
+├── cli.py        命令行入口
+├── config.py                  配置默认值与校验
+├── records.py / tiles.py       指令、版本、Tile 大小等共享定义
+├── errors.py                  统一异常
+├── models/
+│   ├── ssnpu/                 超标量 NPU 核模型
+│   │   ├── scheduler.py       依赖、分配与发射
+│   │   ├── rob.py             重排序缓冲区准入与按序退休
+│   │   ├── tile.py            Local/SharedTileReg 容量、版本与端口
+│   │   ├── cube.py / vector.py 矩阵和向量执行单元
+│   │   ├── execution.py       执行单元的操作数、计算和写回流程
+│   │   ├── tlsu.py            核内 SRAM 访问与内存搬运
+│   │   ├── comm.py            核侧通信适配 CommPort
+│   │   └── sync.py            barrier 与 task 同步
+│   ├── noc/                   Calendar 片上网络
+│   │   ├── unit.py            CommUnit 网络执行与数据发布
+│   │   ├── routing.py         路由树、位图与链路遍历
+│   │   ├── compiler.py        路由与时隙编译、安装配置
+│   │   └── protocol.py        请求、数据访问、完成通知合同
+│   └── memory/
+│       └── hbm.py             全片 HBM 带宽服务
+├── runtime/
+│   ├── component.py           组件队列和观察记录
+│   ├── clock.py               消息交付与外部网络事件接入
+│   ├── protocol.py            核内及存储消息、消息信封与目的命名
+│   └── service.py             资源占用时间与结果延迟
+├── frontend/
+│   ├── capture.py             capture 解析、映射和校验
+│   └── communication.py       显式通信计划与 Tile 版本绑定
+├── workloads/
+│   ├── decode.py              Decode 负载生成
+│   └── decode_numeric.py      同一 capture 的数值执行与参考对照
+├── analysis/
+│   ├── report.py              只读汇总仿真状态和事件
+│   ├── perfetto.py            原生 Perfetto / JSON 时间线导出
+│   └── pipeline.py            资源时间线与当前 Decode 泳道图
 ├── benchmarks/                   外部 SSM 对比与参数校准工具
 ├── config/                       JSON 参数配置
 ├── examples/                     可运行示例和归档 capture、历史结果
@@ -99,7 +97,7 @@ flowchart TD
 
 ## 旧路径迁移
 
-下表旧路径均相对于原 `ssnpu_model/`，新路径相对于 `wse_perf_sim/`。
+下表旧路径均相对于原 `ssnpu_model/`，新路径相对于仓库根目录。
 
 | 旧路径 | 新路径 |
 |---|---|
@@ -114,18 +112,18 @@ flowchart TD
 | `decode.py`、`decode_numeric.py` | `workloads/decode.py`、`workloads/decode_numeric.py` |
 | `report.py`、`perfetto.py` | `analysis/report.py`、`analysis/perfetto.py` |
 | `decode_plot.py` | `analysis/pipeline.py` |
-| `api.py`、`simulator.py`、`config.py` 等顶层模块 | 新包下的同名模块 |
+| `api.py`、`simulator.py`、`config.py` 等顶层模块 | 仓库根目录下的同名模块 |
 
 仓库根目录的 `ssm_baseline.py` 和 `calibrate_ssm.py` 移到 `benchmarks/`，从根目录用 `PYTHONPATH=. python3 benchmarks/ssm_baseline.py ...` 或 `python3 -m benchmarks.ssm_baseline ...` 运行。外部 SSM 工具链和 PyPTO 的准备条件沿用 benchmark 文档。
 
-保留 `from ssnpu_model import simulate, Simulator, ModelError, default_config, wse_config` 和 `python -m ssnpu_model`。内部模块改用表中的新路径。新项目代码推荐：
+公共入口统一为 `from api import simulate` 和 `python -m cli`。原 `ssnpu_model` 导入和命令需迁移到下列入口，内部模块按上表更新。使用示例：
 
 ```python
-from wse_perf_sim import simulate, wse_config
-from wse_perf_sim.frontend.capture import TraceAdapter
-from wse_perf_sim.frontend.communication import allgather_group
-from wse_perf_sim.simulator import Simulator
-from wse_perf_sim.analysis.perfetto import to_pftrace
+from api import simulate, wse_config
+from frontend.capture import TraceAdapter
+from frontend.communication import allgather_group
+from simulator import Simulator
+from analysis.perfetto import to_pftrace
 ```
 
 ## 新功能放在哪里
@@ -136,4 +134,4 @@ from wse_perf_sim.analysis.perfetto import to_pftrace
 - 增加报告字段、图表或导出格式，放到 `analysis`。
 - 比较外部模型、实测数据或拟合参数，放到 `benchmarks`。
 
-`tests/test_architecture.py` 检查模型和运行基础设施的依赖边界，以及独立 NoC 导入、基础 API 的可选依赖隔离和旧公共入口兼容。数值及时序验证见 [目录重构验证](STRUCTURE_VALIDATION.md)。
+`tests/test_architecture.py` 检查模型和运行基础设施的依赖边界，以及独立 NoC 导入和基础 API 的可选依赖隔离。数值及时序验证见 [目录重构验证](STRUCTURE_VALIDATION.md)。

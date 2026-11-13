@@ -1,5 +1,17 @@
 # 目录重构验证
 
+## 后续调整：去掉包目录和旧入口
+
+在 `0666364` 的基础上，将 `models/`、`runtime/`、`frontend/`、`workloads/`、`analysis/` 和入口文件移到仓库根目录，删除 `ssnpu_model/` 兼容目录及对应测试。当前入口为 `from api import simulate`、`python -m cli`，安装后的 `wse-perf-sim` 命令保持不变。
+
+使用同一 Python 3.11.16、NumPy 2.4.6、Matplotlib 3.11.2 环境，完整测试 112 项通过；加 `-S` 后 108 项通过、4 项 NumPy 数值测试跳过。测试数量减少的一项是旧公共入口兼容测试。
+
+使用下文相同的归档 capture、默认逻辑验证配置，以及每核 256 B、40 核 SharedTileReg 源的 AllGather，完整报告与重构前基线相等，周期分别为 matmul 7042、FlashAttention 2183、乱序示例 23、AllGather 8275。安装包中也没有上述两个包目录。从源码根目录外执行命令入口、模块入口、两种 Perfetto 入口和独立导入，共 5 项检查通过；matmul 完整报告与基线一致，两种时间线入口的输出逐字节一致。
+
+原始记录位于 `workspace/flatten-tests.txt`、`workspace/flatten-stdlib-tests.txt` 和 `workspace/flatten/validation.json`。以下保留初版重构的测试条件和结果，其中旧入口兼容测试仅对应初版。
+
+## 初版重构记录
+
 2026-11-13，以提交 `3e4915bda4d22a84a8258c6efcb738dd9cc6188d` 为重构前基线，在同一台机器、同一 Python 环境下比较迁移前后的行为。新的目录说明见 [项目结构](STRUCTURE.md)。
 
 ## 条件与控制变量

@@ -2,8 +2,8 @@
 import argparse
 import json
 from pathlib import Path
-from wse_perf_sim import default_config, simulate
-from wse_perf_sim.frontend.capture import TraceAdapter
+from api import default_config, simulate
+from frontend.capture import TraceAdapter
 from test_model import audit
 
 parser = argparse.ArgumentParser()

@@ -2,9 +2,9 @@
 import unittest
 from types import SimpleNamespace
 
-from wse_perf_sim.config import default_config, validate_config, wse_config
-from wse_perf_sim.models.ssnpu.cube import Cube
-from wse_perf_sim.models.ssnpu.vector import Vector
+from config import default_config, validate_config, wse_config
+from models.ssnpu.cube import Cube
+from models.ssnpu.vector import Vector
 
 
 class CoreBudgetTests(unittest.TestCase):

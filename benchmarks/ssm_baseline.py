@@ -102,8 +102,8 @@ def generate(case, directory):
 
 
 def python_runs(directory, config):
-    from wse_perf_sim import simulate
-    from wse_perf_sim.analysis.perfetto import to_pftrace
+    from api import simulate
+    from analysis.perfetto import to_pftrace
     results = []
     for repeat in (1, 2):
         try:

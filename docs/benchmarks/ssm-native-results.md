@@ -1,6 +1,6 @@
 # SSM 基础 benchmark 完整运行结果
 
-目录迁移说明：下文保留原实验的目录和命令记录。当前仓库脚本位于 `benchmarks/ssm_baseline.py`、`benchmarks/calibrate_ssm.py`，仿真包名为 `wse_perf_sim`；在仓库根目录设置 `PYTHONPATH=.` 后运行。见 [项目结构](../STRUCTURE.md)。
+目录迁移说明：下文保留原实验的目录和命令记录。当前仓库脚本位于 `benchmarks/ssm_baseline.py`、`benchmarks/calibrate_ssm.py`，仿真命令入口为 `python -m cli`；在仓库根目录设置 `PYTHONPATH=.` 后运行。见 [项目结构](../STRUCTURE.md)。
 
 2026-11-13：此前选定的 7 个 SSM 预编译微基准已全部完整运行。每例执行两次 gfrun 和两次 gfsim，全部正常结束，功能执行 R2=0，原生周期和 tile 驻留区间两次均一致。运行没有宿主时间限制（timeout=null）。
 

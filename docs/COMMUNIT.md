@@ -13,7 +13,7 @@
 
 运行中的 `CommUnit` 不读取核指令、capture、Tile 描述或核流水线。构造参数只有 `installation` 和 `platform`。前者含 CalReg（Calendar 时隙配置）的行为级内容；后者含网络拓扑所用参数、时钟，以及端点声明的写服务和消息延迟。
 
-现有 `wse-communication/1` 是联合编译器的输入。`wse_perf_sim/frontend/communication.py` 负责它与 capture 的绑定，`wse_perf_sim/models/noc/compiler.py` 负责路由与时隙生成。编译结果分别为：
+现有 `wse-communication/1` 是联合编译器的输入。`frontend/communication.py` 负责它与 capture 的绑定，`models/noc/compiler.py` 负责路由与时隙生成。编译结果分别为：
 
 - 核侧：`comm.submit` 和 `comm.wait`，请求携带 RouteBits（路由位图）、操作、参与域、源/目的绑定及几何信息，不携带时隙。
 - WSE 侧：`wse-communit/1`，包含各域的操作、轮次、窗口、路由摘要、数据范围及接收覆盖，不包含核指令编号或 Tile 对象。
@@ -22,7 +22,7 @@
 
 ## 三个接口
 
-消息定义在 `wse_perf_sim/models/noc/protocol.py`，均为不可变 dataclass。
+消息定义在 `models/noc/protocol.py`，均为不可变 dataclass。
 
 | 接口 | 消息与关键字段 |
 |---|---|

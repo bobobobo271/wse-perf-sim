@@ -1,6 +1,6 @@
 # SSM 参数校准：第一轮
 
-目录迁移说明：下文保留原实验的目录和命令记录。当前仓库脚本位于 `benchmarks/ssm_baseline.py`、`benchmarks/calibrate_ssm.py`，仿真包名为 `wse_perf_sim`；在仓库根目录设置 `PYTHONPATH=.` 后运行。见 [项目结构](../STRUCTURE.md)。
+目录迁移说明：下文保留原实验的目录和命令记录。当前仓库脚本位于 `benchmarks/ssm_baseline.py`、`benchmarks/calibrate_ssm.py`，仿真命令入口为 `python -m cli`；在仓库根目录设置 `PYTHONPATH=.` 后运行。见 [项目结构](../STRUCTURE.md)。
 
 2026-11-13。基于 [SSM 完整运行结果](ssm-native-results.md) 做经验校准，只修改新配置中的 dtype 吞吐/延迟参数，不改模型实现、消息协议或原始 `logic-validation.json`。
 

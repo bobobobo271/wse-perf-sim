@@ -17,9 +17,9 @@ import shutil
 import subprocess
 import sys
 
-from wse_perf_sim import simulate
-from wse_perf_sim.errors import ModelError
-from wse_perf_sim.analysis.perfetto import to_pftrace
+from api import simulate
+from errors import ModelError
+from analysis.perfetto import to_pftrace
 
 ROOT = Path(__file__).resolve().parents[1]
 TRAIN = ("tmatmul_fp16_16x32x32", "tmatmul_fp16_32x64x64", "tadd_fp32_16x16",

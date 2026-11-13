@@ -5,8 +5,8 @@ import unittest
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from wse_perf_sim import ModelError, default_config, simulate
-from wse_perf_sim.frontend.capture import TraceAdapter
+from api import ModelError, default_config, simulate
+from frontend.capture import TraceAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'workspace/ssnpu-components/tests'

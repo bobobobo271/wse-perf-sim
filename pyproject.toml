@@ -14,9 +14,12 @@ dependencies = []
 decode = ["numpy", "matplotlib"]
 
 [project.scripts]
-wse-perf-sim = "wse_perf_sim.cli:main"
-wse-perf-trace = "wse_perf_sim.analysis.perfetto:main"
+wse-perf-sim = "cli:main"
+wse-perf-trace = "analysis.perfetto:main"
+
+[tool.setuptools]
+py-modules = ["api", "cli", "config", "errors", "records", "simulator", "tiles"]
 
 [tool.setuptools.packages.find]
-include = ["wse_perf_sim*", "ssnpu_model*"]
+include = ["models*", "runtime*", "frontend*", "workloads*", "analysis*"]
 namespaces = false
