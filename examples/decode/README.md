@@ -24,6 +24,19 @@ PYTHONPATH=. python3.11 -S examples/decode/run.py examples/fa/capture \
 
 跑自己的 decode 时，将位置参数替换为外部工具导出的 capture 目录，将 `--config` 指向对应硬件配置。若存在 WSE 核间通信，传入 `--communication-plan`，使通信端点绑定到这份 capture 中的指令和 Tile 版本。HBM（高带宽内存）与 SRAM 间的显式搬运需要输入记录提供 `memory.copy` 及读写范围，硬件配置提供对应带宽。单核时序对照可通过 `--single-core-capture` 传入单独捕获的单核负载。
 
+`wse_config()` 和 `config/wse40.json` 默认配置 HBM。已有 WSE 配置文件可加入 `"hbm": {}` 启用相同默认值。可覆盖以下参数。
+
+| `hbm` 字段 | 默认值 |
+|---|---|
+| `bandwidth_bytes_per_second` | 10,000,000,000,000 B/s（10 TB/s） |
+| `per_core_bytes_per_cycle` | 128 B/核周期 |
+| `startup_ns` | 0 ns |
+
+参与核是当前正在搬运 HBM 数据的核。每核获得的 B/核周期为
+`min(单核上限, 全片 B/s / 核时钟 Hz / 参与核数)`。核时钟边沿有核开始或完成搬运时重新分配。
+同一核的请求按到达顺序服务，读写共用上述带宽，启动延迟可跨核重叠且不占传输带宽。
+报告中 `resources["chip/hbm"].service_cycles` 统计全片有数据搬运的周期，同一周期只计一次。
+
 原有 8 核与 40 核结果对应历史手写 capture。重跑这两个映射需要相应的 PTO capture，以及覆盖 HBM 搬运和集合通信的输入记录与绑定。当前已归档的 `examples/fa/capture` 是两核 dense FA。
 
 `--no-plots` 使用 Python 标准库生成报告和 Perfetto trace。需要静态图时，先安装 `examples/decode/requirements.txt` 中的 Matplotlib，再去掉 `-S` 和 `--no-plots`。

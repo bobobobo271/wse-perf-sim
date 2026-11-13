@@ -7,9 +7,12 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from analysis.pipeline import service_intervals
 from api import ModelError, simulate
-from config import default_config, wse_config
+from config import default_config, validate_config, wse_config
 from examples.decode.run import main
+from models.memory.hbm import HBM
+from runtime.protocol import HBMRequest
 from test_model import ROOT, fixture, op, simulate as simulate_fixture
 
 
@@ -61,17 +64,68 @@ class DecodeReplayTests(unittest.TestCase):
             instance['mapping'] = dict(core_id=instance['thread_id'], pe_id=0)
         manifest_path.write_text(json.dumps(manifest))
         config = wse_config()
-        config['hbm'] = dict(bandwidth_bytes_per_second=256e9, startup_ns=0)
         fast = simulate_fixture(capture, config)
         slow_config = copy.deepcopy(config)
-        slow_config['hbm']['bandwidth_bytes_per_second'] = 1e9
+        slow_config['hbm'] = dict(bandwidth_bytes_per_second=256e9, startup_ns=0)
         slow = simulate_fixture(capture, slow_config)
-        for report in (fast, slow):
+        for report, cycles in ((fast, 2), (slow, 3)):
             first, second = report['hbm_events']
-            self.assertLessEqual(first['end_cycle'], second['start_cycle'])
+            self.assertEqual(first['start_cycle'], second['start_cycle'])
+            self.assertEqual(first['end_cycle'], second['end_cycle'])
+            self.assertEqual(first['end_cycle'] - first['start_cycle'], cycles)
+            self.assertEqual(report['resources']['chip/hbm']['service_cycles'], cycles)
             self.assertEqual(report['resources']['chip/hbm']['bytes'], 512)
+            hbm_lanes = {e['lane'] for e in service_intervals(report) if e['kind'] == 'HBM'}
+            self.assertEqual(hbm_lanes, {'chip/hbm/core:0', 'chip/hbm/core:1'})
             for row in report['timeline']:
                 if row['ir_op'] == 'memory.copy':
                     hbm, sram = row['stages']
                     self.assertLess(hbm['service_end'], sram['start'])
         self.assertGreater(slow['total_cycles'], fast['total_cycles'])
+
+
+class HBMBandwidthTests(unittest.TestCase):
+    def run_hbm(self, config, arrivals):
+        hbm = HBM(validate_config(config))
+        for cycle in range(100):
+            for request in arrivals.get(cycle, ()):
+                hbm.receive('commands', request)
+            hbm.tick(cycle)
+            hbm.drain_outputs()
+            if cycle >= max(arrivals) and hbm.is_idle():
+                return hbm
+        self.fail('HBM failed to drain')
+
+    def test_all_40_cores_transfer_concurrently_under_both_limits(self):
+        arrivals = {0: [HBMRequest(core, core, 3200, 'read', True) for core in range(40)]}
+        # At 1.4 GHz the per-core cap binds. At 2.5 GHz the same 10 TB/s caps each core at 100 B/cycle.
+        for frequency, cycles in ((1_400_000_000, 25), (2_500_000_000, 32)):
+            with self.subTest(frequency=frequency):
+                config = wse_config()
+                config['wse']['core_clock_hz']['value'] = frequency
+                hbm = self.run_hbm(config, arrivals)
+                self.assertEqual({e['core'] for e in hbm.events}, set(range(40)))
+                self.assertEqual({(e['start_cycle'], e['end_cycle']) for e in hbm.events}, {(0, cycles)})
+                self.assertEqual(hbm.service.bytes['chip/hbm'], 128000)
+                self.assertEqual(hbm.service.busy['chip/hbm'], cycles)
+
+    def test_share_changes_on_arrival_and_completion_and_counts_each_core_once(self):
+        # At 1 GHz this yields 128 B/cycle with one active core and 96 B/cycle with two.
+        arrivals = {
+            0: [HBMRequest('long', 0, 640, 'read', True)],
+            1: [HBMRequest('queued', 0, 128, 'read', True),
+                HBMRequest('short', 1, 192, 'write', False)],
+        }
+        for startup in (0, 2):
+            with self.subTest(startup_ns=startup):
+                config = wse_config()
+                config['wse']['core_clock_hz']['value'] = 1_000_000_000
+                config['hbm'] = dict(bandwidth_bytes_per_second=192e9, startup_ns=startup)
+                hbm = self.run_hbm(config, arrivals)
+                spans = {e['op_id']: (e['start_cycle'], e['end_cycle']) for e in hbm.events}
+                self.assertEqual(spans, {
+                    'long': (startup, 6 + startup),
+                    'short': (1 + startup, 3 + startup),
+                    'queued': (6 + 2 * startup, 7 + 2 * startup),
+                })
+                self.assertEqual(hbm.service.busy['chip/hbm'], 7)

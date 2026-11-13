@@ -28,6 +28,9 @@ ENGINES = {
     'shared_write': (256, 2, 'byte/cycle', 'Core'),
 }
 
+HBM_DEFAULTS = dict(bandwidth_bytes_per_second=10_000_000_000_000,
+                    per_core_bytes_per_cycle=128, startup_ns=0)
+
 
 def default_config():
     return {
@@ -81,9 +84,12 @@ def validate_config(c):
     if 'hbm' in c:
         if 'wse' not in c:
             raise ModelError('HBM requires a WSE clock configuration')
-        hbm = c['hbm']
-        for key, minimum in (('bandwidth_bytes_per_second', 1), ('startup_ns', 0)):
-            value = hbm.get(key)
+        if not isinstance(c['hbm'], dict):
+            raise ModelError('Expected an HBM configuration object')
+        hbm = c['hbm'] = HBM_DEFAULTS | c['hbm']
+        for key, minimum in (('bandwidth_bytes_per_second', 1), ('per_core_bytes_per_cycle', 1),
+                             ('startup_ns', 0)):
+            value = hbm[key]
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < minimum:
                 raise ModelError(f'Invalid HBM parameter {key}')
     return c
@@ -114,6 +120,7 @@ WSE_PARAMETERS = {
 def wse_config():
     c = default_config()
     c['name'] = 'wse40-shared-tile-pending'
+    c['hbm'] = HBM_DEFAULTS.copy()
     c['wse'] = {k: dict(value=v, unit=u, status=s,
                          source=('WSE whitepaper v0.2' if s == 'documented' else
                                  'user-confirmed first-version model; 2026-11-13'))

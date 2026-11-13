@@ -1,6 +1,11 @@
 {
   "name": "wse40-shared-tile-pending",
   "message_log": false,
+  "hbm": {
+    "bandwidth_bytes_per_second": 10000000000000,
+    "per_core_bytes_per_cycle": 128,
+    "startup_ns": 0
+  },
   "parameters": {
     "pe_count": {
       "value": 4,

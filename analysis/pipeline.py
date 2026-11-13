@@ -16,6 +16,7 @@ def service_intervals(report):
             resource = stage['resource']
             if resource == 'chip/hbm':
                 kind = 'HBM'
+                resource = f'chip/hbm/core:{row["core"]}'
             elif resource.endswith('/memory'):
                 kind = 'SRAM'
             elif '/cube' in resource:
@@ -66,7 +67,7 @@ def export_pipeline(report, output):
         else:
             label = lane
         groups[label].append(event)
-    lanes = sorted(groups, key=lambda name: (0 if name == 'chip/hbm' else 2 if name.startswith('NoC/') else 1, name))
+    lanes = sorted(groups, key=lambda name: (0 if name.startswith('chip/hbm/') else 2 if name.startswith('NoC/') else 1, name))
     fig, ax = plt.subplots(figsize=(17, max(5, len(lanes)*0.25+1.8)), layout='constrained')
     for index, lane in enumerate(lanes):
         events = groups[lane]
@@ -94,7 +95,7 @@ def export_pipeline(report, output):
         core = event['lane'].split('/')[0]
         label = 'NoC links (union)' if event['kind'] == 'Calendar' else core+' '+event['kind']
         overview[label].append(event)
-    names = sorted(overview, key=lambda name: (0 if name.startswith('chip/') else 2 if name.startswith('NoC') else 1, name))
+    names = sorted(overview, key=lambda name: (0 if name == 'chip HBM' else 2 if name.startswith('NoC') else 1, name))
     fig, ax = plt.subplots(figsize=(15, max(5, len(names)*0.28+2)), layout='constrained')
     for index, name in enumerate(names):
         events = sorted(overview[name], key=lambda e: e['start_us'])

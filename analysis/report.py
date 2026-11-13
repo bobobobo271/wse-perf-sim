@@ -106,7 +106,10 @@ def build_report(sim):
         report['total_time_ns'] = cycle * 1e9 / sim.config['wse']['core_clock_hz']['value']
     if sim.hbm is not None:
         report['hbm_events'] = sim.hbm.events
-        report['assumptions'].append('HBM is one chip-wide FIFO bandwidth server; startup serialized; SRAM endpoint read/write charged separately.')
+        report['assumptions'].append(
+            'HBM reads and writes share chip bandwidth equally across transferring cores, capped per core. '
+            'Each core queues its own transfers; startup can overlap across cores and uses no chip bandwidth. '
+            'Shares change on core clock edges; SRAM endpoint service is charged separately.')
     if sim.noc is not None:
         report['noc'] = sim.noc.report()
         report['communication_plan'] = sim.trace.communication_plan
