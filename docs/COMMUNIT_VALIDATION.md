@@ -29,23 +29,7 @@ Q/K/V 为 FP16；矩阵累加和在线 softmax 状态为 FP32，PV 前概率转�
 
 这里的重构前基线是上次在本工作区实现的 decode 版本，不是尚无 decode 示例的 `origin/main`。本次时间增加分别为 42 和 37 个核周期：请求/数据接口多经过核侧适配器，写端口预约和自动窗口也计入了这段延迟。数值计算与 HBM 流量保持一致。总时间包含计算、访存、集合通信、结果合并、输出写回、退休及消息收尾，是未做硬件校准的模型结果。
 
-本次重复使用旧输入的完整命令：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. OPENBLAS_NUM_THREADS=1 \
-MPLCONFIGDIR=workspace/matplotlib workspace/decode-venv/bin/python examples/decode/run.py \
-  --inputs workspace/decode-demo/inputs.npz \
-  --output-dir workspace/communit-decode-demo
-
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. OPENBLAS_NUM_THREADS=1 \
-MPLCONFIGDIR=workspace/matplotlib workspace/decode-venv/bin/python examples/decode/run.py \
-  --inputs workspace/decode-wse40/inputs.npz \
-  --query-heads 32 --kv-heads 8 --head-dim 128 \
-  --sequence-length 1280 --sequence-splits 5 --tile-tokens 128 --hbm-chunk-tokens 256 \
-  --hbm-gbps 256 --output-dir workspace/communit-decode-wse40
-```
-
-新克隆仓库可省去 `--inputs`，使用同版本 NumPy 和默认 seed=7 生成输入；[示例说明](../examples/decode/README.md)列出依赖安装命令。生成结果保存在 `workspace/`。每份结果还导出分离的 `communication/requests.json`、`installation.json` 和 `platform.json`，并验证保存后的 WSE 配置可重新装入通信单元。
+上述数值对照使用历史提交 `4748dcc` 的示例脚本。当前版本的时序复跑命令见 [Decode 示例](../examples/decode/README.md)。
 
 ## 独立接口与回归条件
 

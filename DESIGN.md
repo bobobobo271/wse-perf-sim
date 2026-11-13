@@ -116,7 +116,7 @@ TLSU [memory write service + latency] --Complete(store)--> ROB
 
 合成配置回放中，matmul 为 168 条 / 7042 周期，FA 为 320 条 / 2183 周期；无限、4、16 三种深度的总周期在这两份 capture 上相同。matmul 的最大单线程窗口峰值分别为 24、4、16，FA 为 43、4、16，所有窗口最终占用为 0。新准入握手使无限模式也比旧模型多一拍启动延迟，不要求旧周期数完全一致。examples 的历史归档不改写。配置、完整报告、事件日志、Perfetto 和汇总保存在上级 workspace/rob-depth；测试临时 capture 仍写入 workspace/ssnpu-components/tests。
 
-核时序模型按配置估算服务速率和延迟。WSE decode 示例另用 NumPy 验证数值。缓存驻留、bank 冲突和单条指令内部多阶段重叠未建模。
+核时序模型按配置估算服务速率和延迟。缓存驻留、bank 冲突和单条指令内部多阶段重叠未建模。
 
 ## WSE 通信接口
 

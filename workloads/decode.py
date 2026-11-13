@@ -1,6 +1,6 @@
 """Parameterized GQA decode capture. Q/K/V are inputs; no projections.
 
-Numerical execution is optional (NumPy); timing always uses the component model.
+The capture describes tensor shapes, types, and operations for the timing model.
 HBM chunks stage into two SRAM slots, then compute tiles feed shared K/V reads.
 """
 from dataclasses import asdict, dataclass
@@ -29,7 +29,6 @@ class DecodeSpec:
     hbm_gbps: float = 256.0
     hbm_startup_ns: float = 0.0
     pe_count: int = 4
-    seed: int = 7
 
     def validate(self):
         for key in ('batch', 'query_heads', 'kv_heads', 'head_dim', 'sequence_length',

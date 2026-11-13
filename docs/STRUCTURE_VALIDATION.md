@@ -1,5 +1,7 @@
 # 目录重构验证
 
+本文记录历史目录重构验证。当前 Decode 示例的运行方式见 [Decode 示例](../examples/decode/README.md)。
+
 ## 后续调整：去掉包目录和旧入口
 
 在 `0666364` 的基础上，将 `models/`、`runtime/`、`frontend/`、`workloads/`、`analysis/` 和入口文件移到仓库根目录，删除 `ssnpu_model/` 兼容目录及对应测试。当前入口为 `from api import simulate`、`python -m cli`，安装后的 `wse-perf-sim` 命令保持不变。

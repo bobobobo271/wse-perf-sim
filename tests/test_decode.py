@@ -10,12 +10,6 @@ from workloads.decode import DecodeSpec, make_decode_capture
 from frontend.capture import TraceAdapter
 from simulator import Simulator
 
-try:
-    from workloads.decode_numeric import make_inputs, execute_capture, dense_reference, compare
-    import numpy as np
-except ImportError:
-    np = None
-
 WORK = Path(__file__).resolve().parents[1] / 'workspace/decode-tests'
 
 
@@ -133,66 +127,6 @@ class DecodeTimingTests(unittest.TestCase):
                        dict(hbm_gbps=0), dict(hbm_gbps=float('nan')), dict(sequence_length=0)):
             with self.assertRaises(ModelError):
                 self.build(replace(self.spec, **change))
-
-
-@unittest.skipUnless(np is not None, 'Install examples/decode/requirements.txt for numerical validation')
-class DecodeNumericalTests(unittest.TestCase):
-    setUp = DecodeTimingTests.setUp
-    build = DecodeTimingTests.build
-
-    def test_same_inputs_single_core_and_dense_reference(self):
-        # Fixed FP16 inputs, same seed/tile/chunk/PE count; vary sequence splits
-        # only. Dense FP64 independently checks the attention definition.
-        for seed in (7, 13):
-            base = replace(self.spec, batch=2, kv_heads=2, query_heads=8, seed=seed)
-            arrays = make_inputs(base)
-            reference = dense_reference(base, arrays)
-            single = replace(base, sequence_splits=1)
-            directory = self.path / f'single-{seed}'
-            config, plan, _ = make_decode_capture(directory, single, single_core=True)
-            trace = TraceAdapter(directory, config, plan)
-            self.assertEqual({i.core for i in trace.instructions.values()}, {0})
-            single_output = execute_capture(trace, single, arrays)
-            self.assertTrue(compare(single_output, reference)['passed'])
-            for splits in (2, 3, 5):
-                spec = replace(base, sequence_splits=splits)
-                path, config, plan, _ = self.build(spec, f'seed-{seed}-splits-{splits}')
-                output = execute_capture(TraceAdapter(path, config, plan), spec, arrays)
-                self.assertTrue(compare(output, single_output)['passed'])
-                self.assertTrue(compare(output, reference)['passed'])
-
-    def test_empty_shards_and_single_token(self):
-        spec = replace(self.spec, sequence_length=1, sequence_splits=5)
-        path, config, plan, _ = self.build(spec)
-        arrays = make_inputs(spec)
-        output = execute_capture(TraceAdapter(path, config, plan), spec, arrays)
-        # With one visible key, each head's exact output is that key's V.
-        np.testing.assert_array_equal(output, np.repeat(arrays['V'][:, 0, 0:1], spec.query_heads, axis=1).reshape(output.shape))
-
-    def test_shifted_large_scores_stay_finite(self):
-        # Keep the same graph; change only input magnitude to stress online max.
-        path, config, plan, _ = self.build()
-        arrays = make_inputs(self.spec)
-        arrays['Q'] *= np.float16(40)
-        arrays['K'] *= np.float16(40)
-        output = execute_capture(TraceAdapter(path, config, plan), self.spec, arrays)
-        self.assertTrue(compare(output, dense_reference(self.spec, arrays))['passed'])
-
-    def test_communication_payload_affects_output(self):
-        # A negative control catches a numerical validator that ignores the
-        # actual receive/source plan. Alter one sender's U bytes after packing.
-        path, config, plan, _ = self.build()
-        arrays = make_inputs(self.spec)
-        trace = TraceAdapter(path, config, plan)
-        good = execute_capture(trace, self.spec, arrays)
-        source = plan['phases'][0]['nodes'][0]['source_version']
-        producer = trace.versions[tuple(source)].producer
-        instruction = trace.instructions[producer]
-        # Replace the packed state producer with zeros: m/l/U of this shard
-        # no longer contribute correctly; capture dependency graph is retained.
-        instruction.raw.update(ir_op='tile.full', parameters={'value': 0})
-        bad = execute_capture(trace, self.spec, arrays)
-        self.assertFalse(compare(bad, good)['passed'])
 
 
 if __name__ == '__main__':

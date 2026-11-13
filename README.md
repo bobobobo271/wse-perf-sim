@@ -1,10 +1,10 @@
 # wse-perf-sim
 
-纯 Python WSE 性能仿真器，包含超标量 NPU 核、Calendar NoC（片上网络）和 HBM（高带宽内存）模型。每核的 NoC 端点是 SharedTileReg，SRAM 作为核内存储。支持 PyPTO capture 导入、显式通信计划、Decode 数值验证和时间线导出。
+纯 Python WSE 性能仿真器，包含超标量 NPU 核、Calendar NoC（片上网络）和 HBM（高带宽内存）模型。每核的 NoC 端点是 SharedTileReg，SRAM 作为核内存储。支持 PyPTO capture 导入、显式通信计划、Decode 时序模拟和时间线导出。
 
 代码按职责分层，核模型、NoC 和 HBM 位于 `models/` 下的平级目录。输入适配在 `frontend/`，负载生成在 `workloads/`，报告和绘图在 `analysis/`。完整目录、依赖边界及旧路径对照见 [项目结构](docs/STRUCTURE.md)。
 
-需要 Python 3.11 或更新版本。在仓库根目录可以直接运行以下命令；也可通过 `python3 -m pip install -e .` 安装，随后使用 `wse-perf-sim` 和 `wse-perf-trace` 命令。Decode 数值验证与绘图另需 `python3 -m pip install -e '.[decode]'`。
+需要 Python 3.11 或更新版本。在仓库根目录可以直接运行以下命令；也可通过 `python3 -m pip install -e .` 安装，随后使用 `wse-perf-sim` 和 `wse-perf-trace` 命令。Decode 静态绘图另需 `python3 -m pip install -e '.[decode]'`。
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --output-dir workspace/wse40
@@ -12,13 +12,13 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --sr
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m unittest discover -s tests -v
 ```
 
-[WSE 参数与执行语义](docs/WSE.md) · [CommUnit 解耦接口](docs/COMMUNIT.md) · [本次数值与时序验证](docs/COMMUNIT_VALIDATION.md) · [历史验证](docs/VALIDATION.md)
+[WSE 参数与执行语义](docs/WSE.md) · [CommUnit 解耦接口](docs/COMMUNIT.md) · [历史通信接口验证](docs/COMMUNIT_VALIDATION.md) · [历史验证](docs/VALIDATION.md)
 
 无通信计划时按原逻辑验证配置运行。统一使用 `from api import simulate` 和 `python -m cli`，原模块的迁移路径见结构文档的对照表。
 
 **核模型与使用说明**
 
-[Decode FlashAttention 示例](examples/decode/README.md) 支持参数化的 Q/K/V 输入、HBM 全片带宽、序列分片核数、SRAM 双缓冲和组内状态合并，并生成单核数值对照与计算/通信流水图。WSE profile 的计算预算按整核等分给 PE；通用逻辑验证 profile 保留原有参数。
+[Decode FlashAttention 示例](examples/decode/README.md) 支持参数化的 Q/K/V 形状、HBM 全片带宽、序列分片核数、SRAM 双缓冲和组内状态合并，并生成单核时序对照与计算/通信流水图。WSE profile 的计算预算按整核等分给 PE；通用逻辑验证 profile 保留原有参数。
 
 Python 3.11+、仅标准库。读取 workload capture v2 / SSNPU v1，采用独立组件、消息队列和周期驱动。每 Core 建立 Scheduler、ROB、TileReg、TLSU、Sync，每 PE 建立 Cube、Vector。Core 间资源独立，PE 数默认 4。参数用于逻辑验证，尚未校准硬件周期精度。
 
@@ -102,7 +102,7 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 | frontend/capture.py / communication.py | capture 输入校验、Tile 与通信计划绑定 |
 | records.py / tiles.py | 各层共用的指令/版本记录、大小计算 |
 | config.py | 参数及配置校验；指令工作量和延迟在对应执行单元内计算 |
-| workloads/decode.py / decode_numeric.py | Decode 负载生成与 NumPy 数值验证 |
+| workloads/decode.py | 按张量形状生成 Decode 负载 |
 | analysis/report.py | 只读汇总组件状态、时间线和统计 |
 | analysis/perfetto.py / pipeline.py | 指令和资源时间线导出、泳道图 |
 | cli.py | CLI |
