@@ -83,7 +83,7 @@ ROB 准入记录 admitted，Scheduler 下一拍记录 admission_received；窗�
 
 ## 从 load → matmul → store 阅读代码
 
-先读 `api.py` 和 `simulator.py` 的组装与时钟循环，再按下列消息流读组件。假设 B 已就绪，load 产生 A，matmul 产生 C，store 写回 DDR：
+先读 `wse_perf_sim/api.py` 和 `wse_perf_sim/simulator.py` 的组装与时钟循环，再按下列消息流读组件。完整目录见 [项目结构](docs/STRUCTURE.md)。假设 B 已就绪，load 产生 A，matmul 产生 C，store 写回 DDR：
 
 ```text
 ROB --Admitted(load)--> Scheduler
@@ -106,7 +106,7 @@ TLSU [memory write service + latency] --Complete(store)--> ROB
                                     \--Consumed(store)--> TileReg [检查 C 释放]
 ```
 
-每条箭头固定占一周期。依次阅读 `components/scheduler.py`、`tile.py`、`tlsu.py` / `execution.py`、`cube.py`、`rob.py`；再读 `sync.py` 理解尾部 barrier 与 task 完成。Vector 使用相同的小型命令结构，服务资源为共享 Vector。
+每条箭头固定占一周期。依次阅读 `wse_perf_sim/models/ssnpu/` 下的 `scheduler.py`、`tile.py`、`tlsu.py` / `execution.py`、`cube.py`、`rob.py`；再读 `sync.py` 理解尾部 barrier 与 task 完成。Vector 使用相同的小型命令结构，服务资源为共享 Vector。
 
 可手算基准：4 元素 full，throughput=4、latency=2、私有输出。周期 0 准入，1 Scheduler 收到通知并请求分配，2 分配，3 派发，4 接收并计算，5 服务结束，7 结果产生并请求写入，8 写入，9 响应并完成，10 ROB 接收完成并退休、TileReg 处理消费，11 完成广播交付。单任务完成节点于 11 完成，12 退休，13 最后广播交付，所以 total_cycles=13。该期望由协议推导，不沿用旧周期数。
 

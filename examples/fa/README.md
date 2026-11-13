@@ -7,7 +7,7 @@
 Run from the repository root:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m ssnpu_model examples/fa/capture --config config/logic-validation.json --output workspace/fa/report.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m wse_perf_sim examples/fa/capture --config config/logic-validation.json --output workspace/fa/report.json
 ```
 
 To regenerate a capture in an environment with pypto installed:

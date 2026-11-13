@@ -7,13 +7,13 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from ssnpu_model import ModelError, simulate, default_config
-from ssnpu_model.config import wse_config, validate_config
-from ssnpu_model.noc_plan import route_bitmap, route_tree, operation_id
-from ssnpu_model.simulator import Simulator
-from ssnpu_model.trace import TraceAdapter
-from ssnpu_model.tiles import version_key
-from ssnpu_model.components.protocol import (ReceivePrepare, PortFence, WriteReservations,
+from wse_perf_sim import ModelError, simulate, default_config
+from wse_perf_sim.config import wse_config, validate_config
+from wse_perf_sim.frontend.communication import route_bitmap, route_tree, operation_id
+from wse_perf_sim.simulator import Simulator
+from wse_perf_sim.frontend.capture import TraceAdapter
+from wse_perf_sim.tiles import version_key
+from wse_perf_sim.runtime.protocol import (ReceivePrepare, PortFence, WriteReservations,
     RouterWrite, PublishReceive, Access)
 from examples.wse_allgather import make_capture
 from test_model import fixture, op, tile
@@ -194,7 +194,7 @@ class CalendarTests(unittest.TestCase):
                 route_tree(0, bits)
 
     def test_perfetto_exports_calendar_without_inventing_compute_stages(self):
-        from ssnpu_model.perfetto import to_perfetto, to_pftrace
+        from wse_perf_sim.analysis.perfetto import to_perfetto, to_pftrace
         r = self.run_model()
         trace = to_perfetto(r['instruction_events'], cycle_ns=5/7)
         names = {e['name'] for e in trace['traceEvents']}

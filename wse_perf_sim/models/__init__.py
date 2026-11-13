@@ -1,0 +1,1 @@
+"""Hardware timing models."""

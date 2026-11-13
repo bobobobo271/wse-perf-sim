@@ -7,7 +7,7 @@
 Run from the repository root:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m ssnpu_model examples/matmul/capture --config config/logic-validation.json --output workspace/matmul/report.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m wse_perf_sim examples/matmul/capture --config config/logic-validation.json --output workspace/matmul/report.json
 ```
 
 To regenerate a capture in an environment with pypto installed:

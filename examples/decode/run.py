@@ -8,13 +8,13 @@ import sys
 
 import numpy as np
 
-from ssnpu_model import simulate
-from ssnpu_model.decode import DecodeSpec, make_decode_capture
-from ssnpu_model.decode_numeric import make_inputs, execute_capture, dense_reference, compare, validate_inputs
-from ssnpu_model.decode_plot import export_pipeline, export_resource_trace
-from ssnpu_model.perfetto import to_pftrace, to_perfetto
-from ssnpu_model.trace import TraceAdapter
-from ssnpu_model.communication.protocol import platform_spec
+from wse_perf_sim import simulate
+from wse_perf_sim.workloads.decode import DecodeSpec, make_decode_capture
+from wse_perf_sim.workloads.decode_numeric import make_inputs, execute_capture, dense_reference, compare, validate_inputs
+from wse_perf_sim.analysis.pipeline import export_pipeline, export_resource_trace
+from wse_perf_sim.analysis.perfetto import to_pftrace, to_perfetto
+from wse_perf_sim.frontend.capture import TraceAdapter
+from wse_perf_sim.models.noc.protocol import platform_spec
 
 
 def export_communication(trace, config, output):

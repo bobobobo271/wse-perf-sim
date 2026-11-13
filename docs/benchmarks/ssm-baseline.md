@@ -1,5 +1,7 @@
 # 首轮 SSM / Python 固定负载基线
 
+目录迁移说明：下文保留原实验的目录和命令记录。当前仓库脚本位于 `benchmarks/ssm_baseline.py`、`benchmarks/calibrate_ssm.py`，仿真包名为 `wse_perf_sim`；在仓库根目录设置 `PYTHONPATH=.` 后运行。见 [项目结构](../STRUCTURE.md)。
+
 运行日期：2026-11-13。本轮固定参数、不拟合、不改 SSM 实现。全部是一个 Core、一个 PE、一个执行线程。用例包含准备 load、目标操作、输出 store。
 
 后续取消时间限制后，7 个 SSM 用例均已完整跑完，两次结果一致。最新 SSM 结果见 [完整运行简报](ssm-native-results.md)；下文保留首轮 120 秒限制下的历史记录。

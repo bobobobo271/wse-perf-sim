@@ -8,13 +8,13 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 
-from ssnpu_model.clock import Clock
-from ssnpu_model.components.base import Component
-from ssnpu_model.communication.compiler import compile_phase, make_installation
-from ssnpu_model.communication.protocol import (
+from wse_perf_sim.runtime.clock import Clock
+from wse_perf_sim.runtime.component import Component
+from wse_perf_sim.models.noc.compiler import compile_phase, make_installation
+from wse_perf_sim.models.noc.protocol import (
     Accepted, Rejected, Completion, CommRequest, DataRange, DataCommand, DataReply, platform_spec)
-from ssnpu_model.communication.unit import CommUnit
-from ssnpu_model.config import wse_config
+from wse_perf_sim.models.noc.unit import CommUnit
+from wse_perf_sim.config import wse_config
 
 
 class ByteClient(Component):

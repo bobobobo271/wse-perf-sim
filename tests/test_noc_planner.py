@@ -11,10 +11,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ssnpu_model import ModelError, simulate, wse_config
-from ssnpu_model.noc_plan import allgather_group, multicast_routes, route_tree
-from ssnpu_model.simulator import Simulator
-from ssnpu_model.trace import TraceAdapter
+from wse_perf_sim import ModelError, simulate, wse_config
+from wse_perf_sim.frontend.communication import allgather_group, multicast_routes, route_tree
+from wse_perf_sim.simulator import Simulator
+from wse_perf_sim.frontend.capture import TraceAdapter
 from test_model import fixture, op, tile
 
 WORK = Path(__file__).resolve().parents[1] / 'workspace/calendar-integration/tests'

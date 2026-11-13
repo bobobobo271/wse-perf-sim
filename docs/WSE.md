@@ -11,7 +11,7 @@
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --output-dir workspace/wse40
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --sram --output-dir workspace/wse40-sram
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m ssnpu_model \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m wse_perf_sim \
   workspace/wse40/capture --config config/wse40.json \
   --communication-plan workspace/wse40/capture/communication.json \
   --output workspace/wse40/cli-report.json --event-log workspace/wse40/instructions.jsonl
@@ -21,7 +21,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m unittest discover -s tests 
 API 保持原用法，并新增可选 `communication_plan`：
 
 ```python
-from ssnpu_model import simulate, wse_config
+from wse_perf_sim import simulate, wse_config
 report = simulate(capture_dir, wse_config(), communication_plan=plan_path_or_dict)
 ```
 
@@ -106,8 +106,8 @@ Shared→NoC→Shared 不访问 SRAM。`total_cycles` 包括核内退休、消�
 目标对象和原 capture 操作 ID，`shard_bytes` 为每个源发送的字节数。
 
 ```python
-from ssnpu_model import simulate, wse_config
-from ssnpu_model.noc_plan import allgather_group
+from wse_perf_sim import simulate, wse_config
+from wse_perf_sim.frontend.communication import allgather_group
 
 plan = allgather_group(sources, targets, owners, shard_bytes=256)
 report = simulate(capture_dir, wse_config(), communication_plan=plan)

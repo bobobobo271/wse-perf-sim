@@ -5,14 +5,16 @@ import io
 from contextlib import redirect_stdout
 from collections import Counter
 
-from ssnpu_model import ModelError, Simulator
-from ssnpu_model.clock import Clock
-from ssnpu_model.cli import main
-from ssnpu_model.components import Component, Cube, TLSU, ROB, Scheduler, Sync, TileReg, Vector
-from ssnpu_model.components.protocol import (
+from wse_perf_sim import ModelError
+from wse_perf_sim.simulator import Simulator
+from wse_perf_sim.runtime.clock import Clock
+from wse_perf_sim.cli import main
+from wse_perf_sim.runtime.component import Component
+from wse_perf_sim.models.ssnpu import Cube, TLSU, ROB, Scheduler, Sync, TileReg, Vector
+from wse_perf_sim.runtime.protocol import (
     Access, AccessDone, Admitted, Allocate, Allocated, Complete, Completed, Consumed, Dispatch, Issued,
 )
-from ssnpu_model.trace import TraceAdapter
+from wse_perf_sim.frontend.capture import TraceAdapter
 from test_model import ModelTestCase, audit, fixture, op, tile
 
 

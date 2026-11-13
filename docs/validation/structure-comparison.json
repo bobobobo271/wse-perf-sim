@@ -1,0 +1,90 @@
+{
+  "passed": true,
+  "checks": {
+    "replay/matmul.json": "complete JSON equality",
+    "replay/fa.json": "complete JSON equality",
+    "replay/ooo.json": "complete JSON equality",
+    "allgather/report.json": "complete JSON equality",
+    "allgather-sram/report.json": "complete JSON equality",
+    "standalone.json": "complete JSON equality",
+    "decode/report.json": "complete JSON equality",
+    "decode/single_core_report.json": "complete JSON equality",
+    "decode/validation.json": "complete JSON equality",
+    "decode/config.json": "complete JSON equality",
+    "decode/inputs.npz": "all arrays exactly equal",
+    "decode/outputs.npz": "all arrays exactly equal",
+    "decode/pipeline.pftrace": "byte-identical",
+    "decode/pipeline.trace.json": "byte-identical",
+    "decode/resources.trace.json": "byte-identical",
+    "decode/instruction_events.jsonl": "byte-identical",
+    "decode/hbm_events.jsonl": "byte-identical",
+    "decode/noc_events.jsonl": "byte-identical",
+    "decode/pipeline_intervals.json": "byte-identical",
+    "decode/communication/requests.json": "byte-identical",
+    "decode/communication/installation.json": "byte-identical",
+    "decode/communication/platform.json": "byte-identical"
+  },
+  "timings": {
+    "replay/matmul.json": {
+      "total_cycles": 7042,
+      "instruction_count": 168
+    },
+    "replay/fa.json": {
+      "total_cycles": 2183,
+      "instruction_count": 320
+    },
+    "replay/ooo.json": {
+      "total_cycles": 23,
+      "instruction_count": 3
+    },
+    "allgather/report.json": {
+      "total_cycles": 8275,
+      "total_time_ns": 5910.714285714285,
+      "instruction_count": 240
+    },
+    "allgather-sram/report.json": {
+      "total_cycles": 8411,
+      "total_time_ns": 6007.857142857143,
+      "instruction_count": 240
+    },
+    "standalone.json": {
+      "total_cycles": 162
+    },
+    "decode/report.json": {
+      "total_cycles": 33920,
+      "total_time_ns": 24228.571428571428,
+      "instruction_count": 8376
+    },
+    "decode/single_core_report.json": {
+      "total_cycles": 95089,
+      "total_time_ns": 67920.71428571429,
+      "instruction_count": 5672
+    }
+  },
+  "artifact_sha256": {
+    "pipeline.pftrace": "756fd8ca5af80586000ef4f50a076da746a9ec96e713593432a19891c7a3db67",
+    "pipeline.trace.json": "28ad5a8b45e0995a9f0690ef0f60f70b304d087eb8de224c63f59d59561b310e",
+    "resources.trace.json": "c589b94166a67b9c8006adb66bbee57cac2753d0c587aefd65b24ca7be24c032",
+    "instruction_events.jsonl": "91b4fcd9840153fda1feefb4c4a2bc2937883b6d158c6fd4a71a876fb753fbf7",
+    "hbm_events.jsonl": "c9e40d3930391282000dde0a00bd3e19265ae8fa2914ad75e2b8e5883fc29921",
+    "noc_events.jsonl": "37fc82745d33e544775e69e1b1ab70efb58adbd463d20d9668757a8b7265301f",
+    "pipeline_intervals.json": "fe9c960445521c1f84e6a3f47ed1c6906b51ad40394c0c5e99a5207fe59382d2",
+    "communication/requests.json": "51f07e8490bc7e0402b84aa74246fd4866a553298adb284ac25099c39bab367e",
+    "communication/installation.json": "b6ef2305c0075416073d45220880c712d338282ccb06ee26b1faef4ccdc0f67d",
+    "communication/platform.json": "e7e67afe00c859600e07e53b76f45f04de1900d2bb23844141a4106de072ba2a"
+  },
+  "decode_conditions": {
+    "batch": 1,
+    "query_heads": 32,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "sequence_length": 1280,
+    "sequence_splits": 5,
+    "tile_tokens": 128,
+    "hbm_chunk_tokens": 256,
+    "hbm_gbps": 256.0,
+    "hbm_startup_ns": 0.0,
+    "pe_count": 4,
+    "seed": 7
+  }
+}

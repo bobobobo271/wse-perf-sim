@@ -5,13 +5,13 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from ssnpu_model import simulate, ModelError
-from ssnpu_model.decode import DecodeSpec, make_decode_capture
-from ssnpu_model.trace import TraceAdapter
-from ssnpu_model.simulator import Simulator
+from wse_perf_sim import simulate, ModelError
+from wse_perf_sim.workloads.decode import DecodeSpec, make_decode_capture
+from wse_perf_sim.frontend.capture import TraceAdapter
+from wse_perf_sim.simulator import Simulator
 
 try:
-    from ssnpu_model.decode_numeric import make_inputs, execute_capture, dense_reference, compare
+    from wse_perf_sim.workloads.decode_numeric import make_inputs, execute_capture, dense_reference, compare
     import numpy as np
 except ImportError:
     np = None
@@ -72,8 +72,8 @@ class DecodeTimingTests(unittest.TestCase):
         self.assertEqual(a.run(), b.run())
 
     def test_memory_stages_and_pipeline_export_use_report_times(self):
-        from ssnpu_model.decode_plot import service_intervals, export_resource_trace
-        from ssnpu_model.perfetto import to_pftrace
+        from wse_perf_sim.analysis.pipeline import service_intervals, export_resource_trace
+        from wse_perf_sim.analysis.perfetto import to_pftrace
         from collections import defaultdict
         import json
         path, config, plan, _ = self.build()

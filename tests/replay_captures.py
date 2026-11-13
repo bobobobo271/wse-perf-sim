@@ -2,8 +2,8 @@
 import argparse
 import json
 from pathlib import Path
-from ssnpu_model import default_config, simulate
-from ssnpu_model.trace import TraceAdapter
+from wse_perf_sim import default_config, simulate
+from wse_perf_sim.frontend.capture import TraceAdapter
 from test_model import audit
 
 parser = argparse.ArgumentParser()

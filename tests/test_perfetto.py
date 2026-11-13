@@ -6,8 +6,8 @@ import struct
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 
-from ssnpu_model import ModelError
-from ssnpu_model.perfetto import main, to_perfetto, to_pftrace
+from wse_perf_sim import ModelError
+from wse_perf_sim.analysis.perfetto import main, to_perfetto, to_pftrace
 from test_model import ModelTestCase, op, tile
 
 

@@ -5,11 +5,11 @@ import unittest
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from ssnpu_model import ModelError, default_config, simulate
-from ssnpu_model.trace import TraceAdapter
+from wse_perf_sim import ModelError, default_config, simulate
+from wse_perf_sim.frontend.capture import TraceAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = ROOT.parent / 'workspace/ssnpu-components/tests'
+WORK = ROOT / 'workspace/ssnpu-components/tests'
 
 
 def tile(oid, producer, shape=(1, 4), version=1, shared=False, handle=None):

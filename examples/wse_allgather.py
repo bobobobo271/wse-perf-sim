@@ -8,9 +8,9 @@ import argparse
 import json
 from pathlib import Path
 
-from ssnpu_model import simulate
-from ssnpu_model.config import wse_config
-from ssnpu_model.noc_plan import allgather_40
+from wse_perf_sim import simulate
+from wse_perf_sim.config import wse_config
+from wse_perf_sim.frontend.communication import allgather_40
 
 
 def tile(name, size, shared=True, producer=None):

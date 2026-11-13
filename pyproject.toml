@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wse-perf-sim"
+version = "0.2.0"
+description = "Python WSE performance simulator with superscalar cores and Calendar NoC"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+decode = ["numpy", "matplotlib"]
+
+[project.scripts]
+wse-perf-sim = "wse_perf_sim.cli:main"
+wse-perf-trace = "wse_perf_sim.analysis.perfetto:main"
+
+[tool.setuptools.packages.find]
+include = ["wse_perf_sim*", "ssnpu_model*"]
+namespaces = false

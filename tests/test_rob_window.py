@@ -4,11 +4,12 @@ import json
 import pickle
 import random
 
-from ssnpu_model import ModelError, Simulator, default_config, simulate
-from ssnpu_model.components import ROB
-from ssnpu_model.components.protocol import Admitted, Complete, Issued
-from ssnpu_model.config import validate_config
-from ssnpu_model.trace import TraceAdapter
+from wse_perf_sim import ModelError, default_config, simulate
+from wse_perf_sim.simulator import Simulator
+from wse_perf_sim.models.ssnpu import ROB
+from wse_perf_sim.runtime.protocol import Admitted, Complete, Issued
+from wse_perf_sim.config import validate_config
+from wse_perf_sim.frontend.capture import TraceAdapter
 from test_model import ModelTestCase, audit, fixture, op, tile
 
 
