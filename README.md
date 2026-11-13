@@ -30,6 +30,36 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m ssnpu_model \
 
 打点包含 allocation_request、allocated、issue、received、operands_ready、compute_start/end、writeback_start/end、complete、rob_complete、retire。complete 是执行单元完成并发送通知；rob_complete 是下一周期 ROB 接收完成通知；retire 是按线程顺序退休，可能晚于 rob_complete。消息日志的 message_log 开关与指令打点独立。
 
+打点日志可用独立脚本转换为原生 Perfetto protobuf，无需重跑仿真或安装第三方库：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m ssnpu_model.perfetto \
+  ../workspace/ssnpu-components/pipeline/matmul.events.jsonl \
+  --output ../workspace/ssnpu-components/pipeline/matmul.pftrace \
+  --cycle-ns 1
+```
+
+在 [Perfetto UI](https://ui.perfetto.dev/) 中选择 Open trace file 打开 .pftrace。原生输出通过 TrackDescriptor.parent_uuid 建立真实父子关系，Core、PE、执行单元和命令组可以折叠展开：
+
+```text
+Core 0
+├─ PE 0
+│  ├─ Cube
+│  │  └─ In-flight commands
+│  │     ├─ active 0
+│  │     └─ active 1
+│  └─ Vector
+├─ TLSU
+├─ ROB
+└─ Scheduler
+```
+
+执行单元的 active 子轨道只覆盖 received→complete：从单元接收命令，到全部输出写回并发送完成通知，包含操作数访问、资源等待、计算和写回。ROB 通知及退休等待放到 Core 的独立 ROB 分组，Scheduler 的分配和发射打点另列，全部原始打点保留为瞬时事件。active 轨道重叠表示多条命令同时在单元内等待或推进；compute 阶段包含服务及结果延迟，不能当作纯资源占用。旧控制/view 日志没有 received，使用 issue→complete 并在详情中标明起点事件。
+
+默认 1 cycle=1 ns 是用于查看的合成映射，不代表硬件频率；可用 --cycle-ns 调整，原生时间戳四舍五入到整纳秒，事件详情仍保留全部原始周期。重叠指令分轨避免非嵌套区间；缺失关键打点、重复事件或时序冲突会报错。Python 调用 `ssnpu_model.perfetto.to_pftrace(events, cycle_ns=1)` 返回可直接保存的 bytes。
+
+为兼容旧工具，输出文件后缀为 .json 时仍导出 [Trace Event JSON](https://perfetto.dev/docs/getting-started/other-formats#chrome-json-format)，也可用 --format json/pftrace 显式指定。JSON 轨道保持平铺，完整的可折叠层级需要 .pftrace。JSON 的 ts/dur 使用微秒；旧 API `to_perfetto(events, cycle_ns=1)` 仍返回 JSON 字典。
+
 Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的工作量与延迟公式，没有独立 CostModel 或预生成的执行阶段。TileReg 直接管理容量、版本和访问端口。
 
 每组件每周期运行一次 tick，本周期消息只在下一周期交付。PE 间轮转、PE 内最老就绪发射；窗口、消息队列和 ROB 无限。输出在派发前原子预留，tile 容量与发射额度继续生效。执行单元可同时持有多条在途命令，共享 Vector 类别竞争同一 PE 资源；共享读、共享写、memory 各自竞争 Core 服务资源。统一计时为 `service=max(1,ceil(work/throughput))`、`service_end=start+service`、`result=service_end+latency`，组件消息延迟单独计入。
@@ -46,6 +76,7 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 | trace.py / records.py / tiles.py | 输入校验、不可变使用的指令/版本元数据、大小计算 |
 | config.py | 参数及配置校验；指令工作量和延迟在对应执行单元内计算 |
 | report.py | 只读汇总组件状态、时间线和统计 |
+| perfetto.py | 指令 JSONL 打点转原生 Perfetto 可折叠轨道，保留旧 JSON 导出 |
 | cli.py / __main__.py | CLI |
 
 报告包含总周期、最后指令完成周期、Core/PE 完成时间、发射/访问/计算/写回/完成/退休时间线、组件状态、服务统计、存储峰值及分配释放事件、等待原因、配置与输入 SHA256。总周期包含控制节点、退休、释放和消息收尾。完成广播和 tile 释放不等待退休。停滞异常包含各组件的队列、依赖、请求、占用版本和等待条件。
