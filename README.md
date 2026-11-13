@@ -44,7 +44,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -m ssnpu_model \
 
 每行包含 cycle、event、op_id、ir_op、core、pe、task、block、thread、control、component 和 execution_component。按 op_id 配对 issue / rob_complete，即得到指令从发射到 ROB 完成的区间；按 execution_component 分执行单元泳道。control=true 表示 barrier/task 控制节点，可按需过滤。API 直接读取 `report['instruction_events']` 或 `report['timeline']`。
 
-打点包含 allocation_request、allocated、issue、received、operands_ready、compute_start/end、writeback_start/end、complete、rob_complete、retire。complete 是执行单元完成并发送通知；rob_complete 是下一周期 ROB 接收完成通知；retire 是按线程顺序退休，可能晚于 rob_complete。消息日志的 message_log 开关与指令打点独立。
+打点包含 admitted、admission_received、allocation_request、allocated、issue、received、operands_ready、compute_start/end、writeback_start/end、complete、rob_complete、retire。admitted 是 ROB 消耗槽位并发出准入通知的周期，admission_received 是下一周期 Scheduler 收到通知的时间；控制节点没有这两个打点。complete 是执行单元完成并发送通知；rob_complete 是下一周期 ROB 接收完成通知；retire 是按线程顺序退休，可能晚于 rob_complete。消息日志的 message_log 开关与指令打点独立。Perfetto 保留准入打点，也兼容没有准入字段的旧日志。
 
 打点日志可用独立脚本转换为原生 Perfetto protobuf，无需重跑仿真或安装第三方库：
 
@@ -78,7 +78,11 @@ Core 0
 
 Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的工作量与延迟公式，没有独立 CostModel 或预生成的执行阶段。TileReg 直接管理容量、版本和访问端口。
 
-每组件每周期运行一次 tick，本周期消息只在下一周期交付。PE 间轮转、PE 内最老就绪发射；窗口、消息队列和 ROB 无限。输出在派发前原子预留，tile 容量与发射额度继续生效。执行单元可同时持有多条在途命令，共享 Vector 类别竞争同一 PE 资源；共享读、共享写、memory 各自竞争 Core 服务资源。统一计时为 `service=max(1,ceil(work/throughput))`、`service_end=start+service`、`result=service_end+latency`，组件消息延迟单独计入。
+每组件每周期运行一次 tick，本周期消息只在下一周期交付。PE 间轮转、PE 内最老就绪发射；消息和执行单元队列无限。输出在派发前原子预留，tile 容量与发射额度继续生效。执行单元可同时持有多条在途命令，共享 Vector 类别竞争同一 PE 资源；共享读、共享写、memory 各自竞争 Core 服务资源。统一计时为 `service=max(1,ceil(work/throughput))`、`service_end=start+service`、`result=service_end+latency`，组件消息延迟单独计入。
+
+`parameters.rob_depth.value` 限制每线程已准入、尚未退休的指令数：正整数为有限容量，`null` 为无限，默认及旧配置缺省为 `null`。普通 tile 指令和 view 都占槽位；barrier/task 控制节点由 Sync 管理，不计窗口容量。ROB 每周期先处理完成和按序退休，再按程序顺序填补空位，准入和退休宽度均无限。完成但尚未退休的指令仍占槽位。Scheduler 收到 Admitted 后才检查依赖和申请输出，窗口内继续允许就绪指令绕过阻塞指令。
+
+报告 `rob_windows[ROB组件名][线程身份]` 给出 capacity、occupancy、peak、full_cycles；最后一项统计每周期退休和补入后，窗口满且仍有指令待准入的周期数。正常完成时 occupancy 为 0。等待原因包含 waiting_admission；死锁快照的 windows 包含窗口内指令、retirement_head 和 next_admission。实验配置与无限、4、16 深度的 matmul/FA 回放产物放在上级 `workspace/rob-depth/`。
 
 | 文件 | 职责 |
 |---|---|
@@ -86,7 +90,7 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 | clock.py / components/protocol.py | 下一周期交付、确定性消息顺序、dataclass 协议 |
 | components/base.py / service.py | 队列接口、局部观察、服务时钟 |
 | components/scheduler.py | 依赖唤醒、输出预留、轮转发射 |
-| components/rob.py / sync.py | 无限 ROB、按线程退休、barrier 与 task |
+| components/rob.py / sync.py | 按线程窗口准入和退休、barrier 与 task |
 | components/tile.py | local/shared 版本、容量、ready、访问端口与释放 |
 | components/cube.py / vector.py / tlsu.py / execution.py | 操作数握手、计算或搬运、独立服务与写回 |
 | trace.py / records.py / tiles.py | 输入校验、不可变使用的指令/版本元数据、大小计算 |
@@ -102,3 +106,7 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 [DESIGN.md](DESIGN.md) 说明组件协议、存储生命周期、可手算周期和 load→matmul→store 的代码阅读顺序。[examples/](examples/README.md) 的 capture、源码和历史报告保留原样，旧报告周期仅供比较。
 
 任意节点组的 AllGather 可用 `ssnpu_model.noc_plan.allgather_group` 自动生成多树路由和发送窗口，再交给 `simulate(..., communication_plan=plan)`。用法见 [WSE 自动规划](docs/WSE.md#自动规划)。
+
+[从 gfrun 捕获 PTO tile trace](docs/gfrun-tile-trace.md) 记录同一 ELF 驱动两套性能模型的备选路线、标准紧凑格式需要补充的运行时信息，以及当前目标编译工具链尚未就绪的限制。
+
+[SSM 完整 benchmark 结果](docs/benchmarks/ssm-native-results.md) 和 [首轮参数校准](docs/benchmarks/ssm-calibration.md) 包含单 PE 固定用例的周期、可选校准配置与复现命令。`ssm_baseline.py --timeout 0` 支持无时间限制运行；`calibrate_ssm.py` 可基于已保存的 SSM 结果重做拟合。

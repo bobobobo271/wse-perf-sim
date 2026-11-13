@@ -80,6 +80,22 @@ class PerfettoTests(ModelTestCase):
     def test_empty_trace(self):
         self.assertEqual(to_perfetto([])['traceEvents'], [])
 
+    def test_admission_tracks_and_legacy_logs(self):
+        events = self.report()['instruction_events']
+        trace = to_perfetto(events)
+        names = {e['tid']: e['args']['name'] for e in trace['traceEvents'] if e['name'] == 'thread_name'}
+        for event in trace['traceEvents']:
+            if event['name'] == 'admitted':
+                self.assertIn('/rob /', names[event['tid']])
+            elif event['name'] == 'admission_received':
+                self.assertIn('/scheduler /', names[event['tid']])
+        legacy = [e for e in events if e['event'] not in ('admitted', 'admission_received')]
+        self.assertEqual(sum(e['ph'] == 'i' for e in to_perfetto(legacy)['traceEvents']), len(legacy))
+        self.assertTrue(to_pftrace(legacy))
+        invalid = [e | {'cycle': 10000} if e['event'] == 'admitted' else e for e in events]
+        with self.assertRaisesRegex(ModelError, 'lifecycle order'):
+            to_perfetto(invalid)
+
     def test_invalid_scale_or_incomplete_logs(self):
         events = self.report()['instruction_events']
         for scale in (0, -1, float('inf'), float('nan'), True):

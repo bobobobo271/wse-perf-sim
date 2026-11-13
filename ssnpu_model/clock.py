@@ -20,6 +20,7 @@ class Clock:
                                       network_time_ns_exact=str(time_ns), **asdict(message)))
 
     def deliver(self, cycle):
+        # 在任何组件 tick 之前交付到期 Envelope，接收方本拍即可消费 inbox。
         waiting = []
         for envelope in self.pending:
             if envelope.received <= cycle:
@@ -29,12 +30,14 @@ class Clock:
         self.pending = waiting
 
     def collect(self, cycle):
-        # Canonical source order and each source's FIFO order define arrival order.
+        # 所有组件 tick 完才收集：按源组件名称排序，同一源保持 FIFO。
+        # 因此共享端口收到请求的顺序不依赖 Simulator 的 tick_order。
         for name, component in sorted(self.components.items()):
             for destination, port, message in component.drain_outputs():
                 if destination not in self.components:
                     raise ValueError(f'Unknown destination {destination}')
                 envelope = Envelope(name, destination, port, message, cycle, cycle + 1)
+                # 消息即使能立即处理也必须跨一拍；这里是组件通信延迟的唯一来源。
                 self.pending.append(envelope)
                 if self.log_messages:
                     self.messages.append(dict(source=name, destination=destination, port=port,

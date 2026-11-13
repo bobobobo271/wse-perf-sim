@@ -10,6 +10,7 @@ PARAMETERS = {
     'pe_count': (4, 'PE', 'Core', 'Number of independent compute engines'),
     'pe_issue_width': (2, 'tile/cycle', 'PE', 'Maximum tile issues per cycle'),
     'core_issue_width': (4, 'tile/cycle', 'Core', 'Maximum tile issues per cycle'),
+    'rob_depth': (None, 'instruction', 'thread', 'Maximum admitted but not retired instructions'),
     'local_capacity': (1048576, 'byte', 'PE', 'LocalTileReg capacity'),
     'shared_capacity': (1048576, 'byte', 'Core', 'SharedTileReg capacity'),
     'barrier_latency': (2, 'cycle', 'block', 'Full phase synchronization delay'),
@@ -47,8 +48,13 @@ def validate_config(c):
     try:
         if type(c.get('message_log', False)) is not bool:
             raise ModelError('message_log must be a boolean')
+        # 旧配置缺省为无限容量；显式非法值仍走下面的严格校验。
+        if 'rob_depth' not in c['parameters']:
+            c['parameters']['rob_depth'] = default_config()['parameters']['rob_depth']
         for k in PARAMETERS:
             v = c['parameters'][k]['value']
+            if k == 'rob_depth' and v is None:
+                continue
             if type(v) is not int or v < (0 if k == 'barrier_latency' else 1):
                 raise ModelError(f'Invalid parameter {k}: {v}')
         for k, (_, _, _, scope) in ENGINES.items():

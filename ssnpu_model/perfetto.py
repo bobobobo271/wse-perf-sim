@@ -70,7 +70,7 @@ def to_perfetto(events, cycle_ns=1.0):
         for group in (phase_group, ('allocation_request', 'allocated')):
             if any(k in times for k in group) and not all(k in times for k in group):
                 raise ModelError(f'Incomplete phase timestamps for instruction {key}')
-        order = ('allocation_request', 'allocated', 'issue', *optional, 'complete', 'rob_complete', 'retire')
+        order = ('admitted', 'admission_received', 'allocation_request', 'allocated', 'issue', *optional, 'complete', 'rob_complete', 'retire')
         ordered = [times[k] for k in order if k in times]
         if ordered != sorted(ordered):
             raise ModelError(f'Invalid lifecycle order for instruction {key}')
@@ -147,9 +147,9 @@ def to_perfetto(events, cycle_ns=1.0):
         identity, args = instruction['identity'], instruction['args']
         core, tracks = identity['core'], instruction['tracks']
         for event in instruction['events']:
-            if event['event'] in ('rob_complete', 'retire'):
+            if event['event'] in ('admitted', 'rob_complete', 'retire'):
                 tid = tracks['rob']
-            elif event['event'] in ('allocation_request', 'allocated', 'issue') and event.get('component') != identity['execution_component']:
+            elif event['event'] in ('admission_received', 'allocation_request', 'allocated', 'issue') and event.get('component') != identity['execution_component']:
                 component = event.get('component') or f'core:{core}/scheduler'
                 if (core, component) not in frontend:
                     frontend[core, component] = new_track(core, component + ' / milestones',
