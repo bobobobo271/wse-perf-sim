@@ -1,6 +1,6 @@
 # CommUnit 接口与 decode FA 复跑
 
-2026-11-13，在本地 macOS、Python 3.11.15 上运行。数值验证使用 NumPy 2.4.6，绘图使用 Matplotlib 3.11.2，`OPENBLAS_NUM_THREADS=1`。本次按 [issue #2](https://github.com/hmljy2020/ssnpu-model/issues/2) 更换通信接口，保留此前 decode 的 Q/K/V 输入、HBM 带宽服务、计算预算和分片方式。FA 为 FlashAttention；本例每次只计算一个 query token，不包含前后投影。
+2026-11-13，在本地 macOS、Python 3.11.16 上运行。完整测试与 decode 使用虚拟环境，独立标准库驱动及归档重放使用同版本系统解释器。数值验证使用 NumPy 2.4.6，绘图使用 Matplotlib 3.11.2，`OPENBLAS_NUM_THREADS=1`。本次按 [issue #2](https://github.com/hmljy2020/ssnpu-model/issues/2) 更换通信接口，保留此前 decode 的 Q/K/V 输入、HBM 带宽服务、计算预算和分片方式。FA 为 FlashAttention；本例每次只计算一个 query token，不包含前后投影。
 
 **101 项测试全部通过；两组 decode 均通过单核和独立稠密参考检查。** [测试日志](validation/communit/tests.txt)、[机器可读比较](validation/communit/comparison.json)及[独立驱动结果](validation/communit/standalone.json)随代码保存。
 
