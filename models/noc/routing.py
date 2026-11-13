@@ -93,3 +93,11 @@ def transmissions(entry, parameters):
     start = entry['window'] * parameters['slot_cycles']
     return [dict(route_bits=entry['route_bits'], start_cycle=start,
                  end_cycle=start + parameters['slot_cycles'])]
+
+
+def receive_offset(hops, flits, parameters):
+    """NoC cycles from window start until the entire payload is ready to write."""
+    if hops == 0:
+        return 0
+    return (parameters['tx_cdc_cycles'] + flits - 1 + hops * parameters['hop_cycles']
+            + parameters['rx_cdc_cycles'])

@@ -9,10 +9,11 @@ import json
 import math
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 
 from api import ModelError, wse_config
-from frontend.communication import allgather_group, multicast_routes, route_tree
+from frontend.communication import allgather_group, compile_phase, multicast_routes, route_tree
 from simulator import Simulator
 from frontend.capture import TraceAdapter
 from test_model import fixture, op, simulate, tile
@@ -64,6 +65,15 @@ class AutomaticCalendarTests(unittest.TestCase):
         self.assertEqual(report['noc']['phases']['allgather']['remote_committed_bytes'],
                          dict.fromkeys((0, 1, 8, 9), 768))
         events = report['noc']['events']
+        intervals = defaultdict(list)
+        for event in events:
+            if event['kind'] in ('link', 'port'):
+                intervals[event['resource']].append((event['time_ns'], event['end_ns']))
+            elif event['kind'] == 'write_reservation':
+                intervals[f'shared_write:{event["node"]}'].append((event['time_ns'], event['end_ns']))
+        for resource, spans in intervals.items():
+            for (_, end), (start, _) in zip(spans, spans[1:]):
+                self.assertLessEqual(end, start, resource)
         writes = [e for e in events if e['kind'] == 'write_visible']
         self.assertEqual(len(writes), 16)
         self.assertEqual(sum(e['bytes'] for e in writes), 4096)
@@ -74,6 +84,41 @@ class AutomaticCalendarTests(unittest.TestCase):
             self.assertGreater(rows[f'consume{core}']['issue'], rows[f'comm:allgather:{core}:wait']['complete'])
         self.assertEqual(self.plan, original)
         self.assertEqual(report['communication_plan'], original)
+
+    def test_opposite_links_run_together_while_shared_writes_queue(self):
+        plan = group_capture(self.path, (0, 1))
+        self.config['engines']['shared_write']['throughput'] = 16
+        report = simulate(self.path, self.config, communication_plan=plan)
+        events = report['noc']['events']
+        links = {e['resource']: e for e in events if e['kind'] == 'link' and e['flit'] == 0}
+        self.assertEqual(links['link:0->1']['time_ns'], links['link:1->0']['time_ns'])
+        for node in (0, 1):
+            local, remote = [e for e in events if e['kind'] == 'write_reservation' and e['node'] == node]
+            self.assertEqual(local['source'], node)
+            self.assertEqual(local['service_cycles'], 16)
+            self.assertLess(remote['ready_cycle'], local['start_cycle'] + local['service_cycles'])
+            self.assertEqual(remote['start_cycle'], local['start_cycle'] + local['service_cycles'])
+        self.assertEqual(report['noc']['phases']['allgather']['remote_committed_bytes'], {0: 256, 1: 256})
+
+    def test_same_ejection_port_serializes_packets_from_distinct_links(self):
+        phase = dict(routing='auto', nodes=[
+            dict(core=core, nbytes=256, destinations=[1]) for core in (0, 1, 2)])
+        compile_phase(phase, self.config)
+        first, local, second = [entry['routes'][0] for entry in phase['nodes']]
+        self.assertEqual(first['start_cycle'], 0)
+        self.assertEqual(local['start_cycle'], 0)
+        self.assertEqual(second['start_cycle'], math.ceil(256 / 52))
+
+    def test_shared_directed_link_checks_each_routes_hop_offset(self):
+        phase = dict(routing='auto', nodes=[
+            dict(core=core, nbytes=256, destinations=[target])
+            for core, target in ((0, 2), (1, 3), (2, 2), (3, 3))])
+        compile_phase(phase, self.config)
+        first, second, *_ = [entry['routes'][0] for entry in phase['nodes']]
+        self.assertEqual(first['start_cycle'], 0)
+        # Link 1->2 is the second hop of the first packet and the first hop of the second.
+        self.assertEqual(second['start_cycle'], 1 + math.ceil(256 / 52))
+        self.assertLess(second['start_cycle'], first['end_cycle'])
 
     def test_all_subsets_of_local_square_are_covered_without_duplicates(self):
         for size in range(1, 5):

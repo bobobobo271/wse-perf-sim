@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from fractions import Fraction
 
 from errors import ModelError
-from models.noc.routing import route_tree, transmissions
+from models.noc.routing import receive_offset, route_tree, transmissions
 from models.noc.protocol import (CommRequest, Accepted, Rejected, Completion, DataCommand, DataReply, digest)
 from runtime.component import Component
 
@@ -165,10 +165,8 @@ class CommUnit(Component):
                 children, landing, distance = route_tree(source, transmission['route_bits'])
                 s['routes'][source, round_id] = children, landing
                 start = s['origin'] + transmission['start_cycle'] * self.noc_ns
-                injection = start + self.p['tx_cdc_cycles'] * self.noc_ns
                 for target in landing:
-                    ready = start if source == target else (injection + (count - 1 + distance[target] *
-                        self.p['hop_cycles'] + self.p['rx_cdc_cycles']) * self.noc_ns)
+                    ready = start + receive_offset(distance[target], count, self.p) * self.noc_ns
                     requests[target].append((math.ceil(ready / self.core_ns) + self.platform['endpoint_command_cycles'], source, round_id))
         for target, entries in sorted(requests.items()):
             available = s['ports'][target]
@@ -376,7 +374,7 @@ class CommUnit(Component):
                             for name, s in self.states.items()},
                     assumptions=['WSE40 mesh; one source packet per participant and phase; phases drain serially.',
                                  'One flit per NoC cycle per injection/ejection/directed link; parallel multicast.',
-                                 'Automatic plans serialize whole-packet tree windows using declared link and Shared service.',
+                                 'Automatic plans overlap trees with disjoint resource intervals; buffered receives queue for Shared writes.',
                                  'Whole-packet TX/RX buffers provisioned from the plan; hardware depth is pending.',
                                  'Shared writes reserve service windows; ordinary writes use gaps (pending).',
                                  'Simulator source/segment identities are metadata; on-wire encoding remains pending.',
