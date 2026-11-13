@@ -3,8 +3,9 @@ from collections import Counter
 
 from runtime.component import Component
 from runtime.protocol import (Dispatch, Complete, Consumed, Access, AccessDone, ReceivePrepare,
-                       PortFence, WriteReservations, RouterWrite, PublishReceive, TransferReply, core_name)
-from models.noc.protocol import (Accepted, Rejected, Completion, DataCommand, DataReply, request_from_dict)
+                       PortFence, WriteReservations, RouterWrite, PublishReceive, TransferReply, TileStreamAccess, ReleaseTileStream, core_name)
+from models.noc.protocol import (Accepted, Rejected, Completion, DataCommand, DataReply, request_from_dict,
+                                 StreamAccess, StreamReply, StreamSubmit, stream_request_from_dict)
 from errors import ModelError
 
 
@@ -15,11 +16,16 @@ class CommPort(Component):
         self.bindings, self.by_instruction = {}, {}
         self.waiting, self.finished, self.retry = set(), {}, {}
         self.waits = Counter()
+        self.completed_tokens = set()
         for key, instruction in instructions.items():
             token = instruction.raw['communication']['token']
             binding = self.bindings.setdefault(token, {})
             binding[instruction.raw['ir_op'].split('.')[1]] = instruction
-            binding['request'] = request_from_dict(instruction.raw['communication']['request'])
+            raw = instruction.raw['communication']['request']
+            if 'request_id' in raw:
+                binding['request'] = StreamSubmit(instruction.core, name, stream_request_from_dict(raw))
+            else:
+                binding['request'] = request_from_dict(raw)
             self.by_instruction[key] = token
 
     def finish(self, instruction):
@@ -50,6 +56,13 @@ class CommPort(Component):
             elif isinstance(message, Completion):
                 if message.status != 'success':
                     raise ModelError(f'Communication {message.token} fault (bindings quarantined): {message.error}')
+                if message.token in self.completed_tokens:
+                    raise ModelError('Duplicate communication completion')
+                binding = self.bindings[message.token]
+                if isinstance(binding['request'], StreamSubmit):
+                    submit = binding['submit']
+                    self.send(core_name(submit.core, 'tile'), ReleaseTileStream(submit.id))
+                self.completed_tokens.add(message.token)
                 self.finished[message.token] = message
             elif isinstance(message, AccessDone):
                 token = self.by_instruction[message.instruction]
@@ -59,6 +72,14 @@ class CommPort(Component):
                 self.observe(message.instruction, source_read_complete=cycle)
             elif isinstance(message, TransferReply):
                 self.send('communit', DataReply(self.by_instruction[message.instruction], message.event, message.detail))
+            elif isinstance(message, StreamAccess):
+                binding = self.bindings[message.token]
+                submit, wait = binding['submit'], binding['wait']
+                self.send(core_name(submit.core, 'tile'), TileStreamAccess(submit.id, wait.id, message))
+            elif isinstance(message, StreamReply):
+                if message.event == 'read_done':
+                    self.observe(self.bindings[message.token]['submit'].id, source_read_complete=cycle)
+                self.send('communit', message)
             elif isinstance(message, DataCommand):
                 binding = self.bindings[message.token]
                 submit, wait, request = binding['submit'], binding['wait'], binding['request']

@@ -30,7 +30,7 @@ def service_intervals(report):
     for event in report.get('noc', {}).get('events', []):
         if event['kind'] == 'link':
             intervals.append(dict(lane='NoC/'+event['resource'], kind='Calendar',
-                op_id=event['phase'], start_us=event['time_ns']/1000, end_us=event['end_ns']/1000))
+                op_id=str(event['phase']), start_us=event['time_ns']/1000, end_us=event['end_ns']/1000))
     return intervals
 
 

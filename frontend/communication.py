@@ -55,8 +55,14 @@ def attach_plan(trace, plan):
         plan = copy.deepcopy(plan)
     if 'wse' not in trace.config:
         raise ModelError('Communication requires a WSE configuration')
+    if plan.get('schema') == 'wse-communication/stream-v1' and plan.get('non_speculative') is True:
+        from frontend.stream_communication import attach_stream_plan
+        trace.source_hashes['communication_plan'] = hashlib.sha256(data).hexdigest()
+        trace.communication_plan = copy.deepcopy(plan)
+        attach_stream_plan(trace, plan)
+        return
     if plan.get('schema') != 'wse-communication/1' or plan.get('non_speculative') is not True:
-        raise ModelError('Expected explicit wse-communication/1 non_speculative=true plan')
+        raise ModelError('Expected explicit communication plan with non_speculative=true')
     phases = plan['phases']
     if not phases or len({p['name'] for p in phases}) != len(phases):
         raise ModelError('Provide unique nonempty communication phases')

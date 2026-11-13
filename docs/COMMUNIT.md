@@ -88,3 +88,22 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3.11 -S \
 
 当前通信提供 AllGather（全收集）和复制。FA 的最大值、指数重标定和求和均在核内执行。
 同一集合域内，自动计划允许多棵树同时发送，按各自的注入口、有向链路和接收口占用避免冲突。收齐的包可在接收缓冲区等待本核 Shared 写口。
+
+## Issue #4 的流式复制接口
+
+[Issue #4 最新补充](https://github.com/hmljy2020/ssnpu-model/issues/4#issuecomment-6848590938)定义了一对多广播和多对一汇集。新增的 `wse-communication/stream-v1` 计划走这条接口，既能接独立字节驱动，也能由回放入口接入核模型的 `CommPort` 和 `TileReg`。上文描述的是原 `wse-communication/1` AllGather 回放。
+
+每节点提交一份 `StreamRequest`，最多带一条发送描述符和一个接收登记。只收或只发的节点也要提交。发送描述符给出二维源布局、单份 `routeBits`、逻辑接收区域与目的偏移。接收方把逻辑区域绑定到本核 Shared Tile 版本，分别声明授权容量、预期远端字节数 `expVal` 和需要填满的有效范围。补本地分片时，用 `self_copy` 走实际读写，远端计数只统计网络收到的有效字节。
+
+核侧收到 `Accepted` 后可以继续执行独立工作。通信单元等所有节点返回 `Prepared`，以共同起点执行预编译的相对时隙。每段读写都带访问编号、句柄、偏移和长度。接收写入可见后才计数，全部有效范围覆盖后由 TileReg 发布。发送责任结束且本地目标已发布时，通信单元返回完成。源引用保守保留到本地请求成功。违约会停止推进，未完成请求返回 `safe_to_release=false` 并保留绑定。
+
+编译器按配置切分片段，使用已有路由树规则检查落点，再为片段排定读、网络发送和写入阶段。初版每个网络时隙发一段，相邻片段的读、网络和写入可以重叠。编译时同时计入有限发送和接收缓冲。核模型在通信期间为相应存储端口保留服务，普通共享端口访问可能等待。当前时隙和端口参数用于功能及时序合同验证，等待开销仍需结合真实接口校准。
+
+流式计划沿用 `phases[].nodes[].core/owner` 绑定 capture，每个节点可提供 `send` 或 `receive`。发送侧用 `source_version` 引用已有版本，布局字段见 `SendLayout`。接收侧给出 `target`、`recv_sym_base` 和 `exp_val`，也可显式指定 `capacity` 与 `valid_ranges`。逻辑区域目前绑定到一个 Shared Tile 对象。计划的 `buffers` 必须给出 `access_bytes`、`tx_bytes` 和 `rx_bytes`。
+
+```bash
+PYTHONPATH=. python3.11 -S examples/communication/streaming.py broadcast --buffer-bytes 64
+PYTHONPATH=. python3.11 -S examples/communication/streaming.py gather --buffer-bytes 64
+```
+
+这两例都用 WSE40 网格中的节点 0–3、每份 512 B、每次存储访问 32 B。广播校验三个接收端各得到原始 512 B。汇集校验节点 3 得到按行横向拼接的 1,536 B。发送与接收缓冲分别用 32 B 和 64 B 验证。

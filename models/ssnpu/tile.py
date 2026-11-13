@@ -8,7 +8,8 @@ from runtime.protocol import (Access, AccessDone, Allocate, Allocated, Complete,
 from runtime.service import Service
 from errors import ModelError
 from runtime.protocol import (ReceivePrepare, PortFence, WriteReservations, RouterWrite,
-                       PublishReceive, TransferReply)
+                       PublishReceive, TransferReply, TileStreamAccess, ReleaseTileStream)
+from models.ssnpu.stream_tile import StreamTileAccesses
 
 
 class TileReg(Component):
@@ -24,6 +25,7 @@ class TileReg(Component):
         self.usage, self.peak = Counter(), Counter()
         self.storage_events = []
         self.service = Service()
+        self.stream = StreamTileAccesses()
         self.ready, self.done = set(), set()
         self.allocations, self.accesses, self.running = [], [], []
         self.blocked = {}
@@ -97,6 +99,8 @@ class TileReg(Component):
         cost = e | e.get('dtype_overrides', {}).get(request.dtype, {})
         i = self.nodes[request.instruction]
         duration = max(1, math.ceil(request.work / cost['throughput']))
+        if self.stream.fenced(request.write):
+            return None
         if request.write and (self.port_fences or any(
                 self.cycle < start + service and start < self.cycle + duration
                 for start, service, _ in self.reservations.values())):
@@ -184,6 +188,16 @@ class TileReg(Component):
     def tick(self, cycle):
         # 1. 收取请求和消费通知。Allocate/Access 入等待队列，在本组件内自主重试。
         for _, message in self.inputs(cycle):
+            if isinstance(message, TileStreamAccess):
+                try:
+                    self.stream.start(self, message)
+                except ModelError as exc:
+                    self.stream.reply(self, message, 'fault', str(exc))
+                continue
+            if isinstance(message, ReleaseTileStream):
+                del self.stream.active[message.submit]
+                self.finish_instruction(message.submit)
+                continue
             try:
                 if self.transfer_message(message):
                     continue
@@ -209,6 +223,7 @@ class TileReg(Component):
                 self.finish_instruction(i.id)
             else:
                 raise TypeError(message)
+        self.stream.advance(self)
         for message, end in list(self.router_running):
             if end <= cycle:
                 ctx = self.receives[message.instruction]
@@ -256,10 +271,12 @@ class TileReg(Component):
 
     def is_idle(self):
         return super().is_idle() and not (self.allocations or self.accesses or self.running
-                                               or self.router_running or self.port_fences or self.reservations)
+                                               or self.router_running or self.port_fences or self.reservations
+                                               or self.stream.active or self.stream.running)
 
     def next_event(self):
-        return min((end for _, end in self.running + self.router_running), default=None)
+        return min([end for _, end in self.running + self.router_running]
+                   + [entry[0] for entry in self.stream.running], default=None)
 
     def snapshot(self):
         return dict(super().snapshot(), calendar_receives={str(k): dict(pending=sorted(v['pending']),

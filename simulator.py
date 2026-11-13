@@ -46,8 +46,12 @@ class Simulator:
             self.hbm = HBM(config)
             self.components['hbm'] = self.hbm
         if trace.calendar_phases:
-            from models.noc.unit import CommUnit
-            self.noc = CommUnit(trace.comm_installation, platform_spec(config))
+            if trace.comm_installation['schema'] == 'wse-communit-stream/1':
+                from models.noc.stream import StreamingCommUnit
+                self.noc = StreamingCommUnit(trace.comm_installation, trace.comm_platform)
+            else:
+                from models.noc.unit import CommUnit
+                self.noc = CommUnit(trace.comm_installation, platform_spec(config))
             self.components['communit'] = self.noc
         self.clock = Clock(self.components, config.get('message_log', False))
         self.tick_order = list(tick_order) if tick_order is not None else sorted(self.components)

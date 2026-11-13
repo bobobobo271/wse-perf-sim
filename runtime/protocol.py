@@ -157,3 +157,15 @@ class HBMRequest:
 @dataclass(frozen=True)
 class HBMDone:
     instruction: object
+
+
+@dataclass(frozen=True)
+class TileStreamAccess:
+    submit: object
+    wait: object
+    access: object
+
+
+@dataclass(frozen=True)
+class ReleaseTileStream:
+    submit: object
