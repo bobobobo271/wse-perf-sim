@@ -13,7 +13,7 @@ from .tiles import nbytes, version_key
 
 class TraceAdapter:
     """Capture v2 / SSNPU v1 boundary; order edges only establish age."""
-    def __init__(self, capture_dir, config):
+    def __init__(self, capture_dir, config, communication_plan=None):
         self.path, self.config = Path(capture_dir), config
         self.instructions, self.versions = {}, {}
         self.source_hashes = {}
@@ -58,8 +58,13 @@ class TraceAdapter:
                                      set(r['dependencies']), set(r.get('sync_dependencies', [])),
                                      alias=r['ir_op'] in {'tile.transpose_view', 'tile.reshape', 'tile.reshape_view', 'tile.view'}))
         real = list(self.instructions.values())
-        self._versions(real)
         self._barriers(events, instances, real)
+        self.calendar_phases = []
+        if communication_plan is not None:
+            from .noc_plan import attach_plan
+            attach_plan(self, communication_plan)
+            real = [i for i in self.instructions.values() if not i.control]
+        self._versions(real)
         self._tasks(real)
         self._validate_graph()
 

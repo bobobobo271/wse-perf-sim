@@ -1,0 +1,214 @@
+{
+  "date": "2026-11-13",
+  "python": "3.11.15",
+  "platform": "macOS-26.5.2-x86_64-i386-64bit",
+  "site_packages_enabled": false,
+  "upstream_commit": "c5e37d6bad5f622a4ce4046a2b38e86a96240e84",
+  "design_commit": "e9ecb1aeb766372110bc4d4847f19d4a451c1108",
+  "migrated_noc_commit": "3445e9942707a54f2ed16323e60260bd07d15c3f",
+  "tests": {
+    "baseline": 45,
+    "final": 76,
+    "added": 31,
+    "status": "PASS"
+  },
+  "original_captures": [
+    {
+      "capture": "matmul",
+      "instructions": 168,
+      "cycles": 7041,
+      "last_instruction_complete_cycle": 7037,
+      "last_node_complete_cycle": 7039,
+      "core_completion": {
+        "0": 7039,
+        "1": 7037
+      },
+      "storage_peak_bytes": {
+        "core:0/pe:0/local": 49152,
+        "core:0/pe:1/local": 49152,
+        "core:0/pe:2/local": 49152,
+        "core:0/pe:3/local": 49152,
+        "core:0/shared": 32768,
+        "core:1/pe:1/local": 49152,
+        "core:1/pe:2/local": 49152,
+        "core:1/pe:3/local": 49152,
+        "core:1/pe:0/local": 49152,
+        "core:1/shared": 32768
+      },
+      "audit": "PASS: unique instructions, dependencies, issue limits, resource intervals, operand handshakes, retirement, capacity and exact allocation/free lifetimes"
+    },
+    {
+      "capture": "fa",
+      "instructions": 320,
+      "cycles": 2182,
+      "last_instruction_complete_cycle": 2178,
+      "last_node_complete_cycle": 2180,
+      "core_completion": {
+        "0": 2180,
+        "1": 2178
+      },
+      "storage_peak_bytes": {
+        "core:0/pe:0/local": 61952,
+        "core:0/pe:3/local": 61952,
+        "core:0/pe:1/local": 61952,
+        "core:0/pe:2/local": 61952,
+        "core:0/shared": 32768,
+        "core:1/pe:0/local": 61952,
+        "core:1/pe:1/local": 61952,
+        "core:1/pe:2/local": 61952,
+        "core:1/pe:3/local": 61952,
+        "core:1/shared": 32768
+      },
+      "audit": "PASS: unique instructions, dependencies, issue limits, resource intervals, operand handshakes, retirement, capacity and exact allocation/free lifetimes"
+    },
+    {
+      "capture": "ooo",
+      "instructions": 3,
+      "cycles": 22,
+      "last_instruction_complete_cycle": 18,
+      "last_node_complete_cycle": 20,
+      "core_completion": {
+        "0": 20
+      },
+      "storage_peak_bytes": {
+        "core:0/pe:1/local": 16,
+        "core:0/pe:0/local": 16
+      },
+      "audit": "PASS: unique instructions, dependencies, issue limits, resource intervals, operand handshakes, retirement, capacity and exact allocation/free lifetimes"
+    }
+  ],
+  "original_schedule_regression": "PASS: exact timeline, milestones, service, storage and wait statistics",
+  "network_migration": {
+    "status": "PASS",
+    "compared_link_flit_intervals": 7800,
+    "conditions": "WSE40 5x8, D=256 B/core; same row/column routes, 64 B/flit, 12 B header, 2 GHz, one-cycle hops; normalize time per source packet to exclude changed endpoints",
+    "scope": "Directed link, flit order, relative start, duration, payload/header/padding; not end-to-end latency equivalence",
+    "normalized_sha256": "a63a4268674f6d51afdb5ceb97fc78151bc9301d7b97c40123c743b3d4567552"
+  },
+  "cli_api_equivalence": "PASS (raw source hash differs for dict vs formatted plan file)",
+  "perfetto": {
+    "instruction_events": 2724,
+    "bytes": 2007061,
+    "status": "PASS"
+  },
+  "tilesim_runtime_imports": false,
+  "examples": {
+    "wse40": {
+      "instruction_count": 320,
+      "total_cycles": 8140,
+      "total_time_ns": 5814.285714285715,
+      "total_time_ns_exact": "40700/7",
+      "shared_peak_bytes_per_core": 12544,
+      "local_peak_bytes_per_pe": 10240,
+      "wire_bytes": 499200,
+      "link_flits": 7800,
+      "phases": {
+        "row": {
+          "status": "done",
+          "remote_bytes_per_core": [
+            1792
+          ],
+          "nodes": 40
+        },
+        "column": {
+          "status": "done",
+          "remote_bytes_per_core": [
+            8192
+          ],
+          "nodes": 40
+        }
+      },
+      "adapter_reserved_tx_bytes_per_core": 2048,
+      "adapter_reserved_rx_bytes_per_core": 8192,
+      "report_sha256": "4e029fd84a5402573d626c8700d3412f03e6ac3472cc2dcdfbc123272522cacd"
+    },
+    "wse40-sram": {
+      "instruction_count": 320,
+      "total_cycles": 8278,
+      "total_time_ns": 5912.857142857143,
+      "total_time_ns_exact": "41390/7",
+      "shared_peak_bytes_per_core": 12544,
+      "local_peak_bytes_per_pe": 10240,
+      "wire_bytes": 499200,
+      "link_flits": 7800,
+      "phases": {
+        "row": {
+          "status": "done",
+          "remote_bytes_per_core": [
+            1792
+          ],
+          "nodes": 40
+        },
+        "column": {
+          "status": "done",
+          "remote_bytes_per_core": [
+            8192
+          ],
+          "nodes": 40
+        }
+      },
+      "adapter_reserved_tx_bytes_per_core": 2048,
+      "adapter_reserved_rx_bytes_per_core": 8192,
+      "report_sha256": "8b86bf51bd209f853bc65c9501a463a69c277d89e61e100adf0a4f339ef00f2a"
+    },
+    "auto40": {
+      "instruction_count": 200,
+      "total_cycles": 2019,
+      "total_time_ns": 1442.142857142857,
+      "total_time_ns_exact": "10095/7",
+      "shared_peak_bytes_per_core": 10496,
+      "local_peak_bytes_per_pe": 10240,
+      "wire_bytes": 574720,
+      "link_flits": 8980,
+      "phases": {
+        "allgather": {
+          "status": "done",
+          "remote_bytes_per_core": [
+            9984
+          ],
+          "nodes": 40
+        }
+      },
+      "adapter_reserved_tx_bytes_per_core": 256,
+      "adapter_reserved_rx_bytes_per_core": 9984,
+      "report_sha256": "30b0cebd23411fff1fb24507eea237917ccabb2968331572d406d147c0159407"
+    }
+  },
+  "source_sha256": {
+    "config/wse40.json": "8664519e7bbcdc887753628e665f21db90f0b9a06b4f660c8797ac6a06e4fcc1",
+    "examples/wse_allgather.py": "4495aaf213786409c5d27d401e1ee2a80cf217fb3f7a118616c33ddb7d008d8b",
+    "ssnpu_model/__init__.py": "5ccf2d6588c4a8cc64c2b9c28342b090b44da010583304b96bd0048a6c26c3c0",
+    "ssnpu_model/__main__.py": "ea94e1a862c8c329069535f031ab69b0e43ecb4e28e4a1774f837ef2fe834a52",
+    "ssnpu_model/api.py": "8246f88eb3a4fbfad0b52699cf5bda3ddf010cec0bfdd1f7657f9a1397cd1bd2",
+    "ssnpu_model/cli.py": "01a5c231851e0555257ebe21c7d2636c8035f3d9c9461416d4ed348d75d21cce",
+    "ssnpu_model/clock.py": "6cb5c71ffbb6f224613857dcda7f05a32a6879df16400ecc1755f94a3b84858e",
+    "ssnpu_model/components/__init__.py": "f63a1788975206cc175bbc4233a99f34688b7334a15cb5a565e9bd2af2b4f6a7",
+    "ssnpu_model/components/base.py": "f88fe69cabbb708443408766581728518c94811c3fd3a4f32225f640db873f44",
+    "ssnpu_model/components/cube.py": "2b9263d7f58093656c9912aa40e7447600f8eaf44c08fa1cc78c1d1d973d30b9",
+    "ssnpu_model/components/execution.py": "d0d5e80913fc8e3d2c231fea83a6afe5e4f9446746965a9a37fe9e4e1421959e",
+    "ssnpu_model/components/noc.py": "c7675ef2e19a1843bcf25f60bfb19df2cfacdf7e074b575ecf6182dfa59a5a7b",
+    "ssnpu_model/components/protocol.py": "260dabe8e59bc571ba27537eb3ae57b46961aadc878bcf806554e8a0f5032345",
+    "ssnpu_model/components/rob.py": "cfdf903b8de7d5bee45b82cbafd7694c16e8ccdc5fde82cb318473730aef0025",
+    "ssnpu_model/components/scheduler.py": "cdd4f745fe60a8ead4d79863d52b6f9cc1ee62d010abe0f43f32f8b38b48bbfd",
+    "ssnpu_model/components/service.py": "4514258ef9e918d21a82b61b821d8a305b4ad1ff90b6ffa2e06683aff30f29c1",
+    "ssnpu_model/components/sync.py": "da6dbfdf9f554d62214fda14fba4a641223f99b2583be9e73c3269a75f39be30",
+    "ssnpu_model/components/tile.py": "0ebf53116d67537ee634cc68b4346c37f5cd6815931ada0ca27b4d1ef23848db",
+    "ssnpu_model/components/tlsu.py": "89dcd0e20a94113ba11049d98f5714f92cd23c6d17be70a42c9ebec58c84af66",
+    "ssnpu_model/components/vector.py": "b3ac0fd58e5f3ebb6a5d13c72de01d88beba2617fc04a7340176b4450868fe74",
+    "ssnpu_model/config.py": "0d11d2072d38ad7a7fd51efb604368cfd2c2d7d51627314ea883b23d66ff87e4",
+    "ssnpu_model/errors.py": "c5ebf12c2c29ed7b13d8a0070cb9eb71e589d90609ff415af1270d63dd6fa306",
+    "ssnpu_model/noc_plan.py": "bcc0ceb231cc33baf5c1aafef55321e95fb243bb6c104fa07107364346c1c416",
+    "ssnpu_model/perfetto.py": "9b190ac2e101a6ed038d661cb95abdc33e121e910e5d08374fc886fd39b4bc58",
+    "ssnpu_model/records.py": "fa37915faf54b4561f4a5d430b90589a3f5519648a9dcd95c5cfa3c86087a25f",
+    "ssnpu_model/report.py": "d66c370e1910a3f9363c17ee6061fce6dc5bf6358e6b7f3b6e120406c1443f41",
+    "ssnpu_model/simulator.py": "ffc81da37cc5316a7b560cb97d773c1a0ebc950704cb5d5fe8042c12ca6743f4",
+    "ssnpu_model/tiles.py": "55d8cec57c1aa694c4b8d0ba26326068ff3912eb904e3803d46d0ef4a1d7407e",
+    "ssnpu_model/trace.py": "d5ee84af1f104c6ebcab7556c6308689ec5438d11eb45efa287ea292541fdec5",
+    "tests/replay_captures.py": "b954ebb8cf419a69a878af31258a14610f9c8826927f28bf7956d09082bee495",
+    "tests/test_components.py": "0c6127cff4cb96514fbff3fe57e0cedb08778b9932830b23edd6accc258c774d",
+    "tests/test_model.py": "4c56dfb7614153f095795f6c0d2a65bdaf3dd63ee66ef8d3495f1f17cc471612",
+    "tests/test_noc.py": "840552121c6c2e21377ea890dd7d18cdd02e2a6e41193b46e1cabe64da845adf",
+    "tests/test_noc_planner.py": "4298314690f8b2bc9877c84617b198647697c4e3771eaf72d418c035f7413fcd",
+    "tests/test_perfetto.py": "06368e3557850ee9fb0e12d09f7536f0d8537ce66f9e5dbc1b4d5e74044f3270"
+  }
+}

@@ -11,11 +11,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='SSNPU tile performance model (uncalibrated)')
     parser.add_argument('capture_dir')
     parser.add_argument('--config')
+    parser.add_argument('--communication-plan', help='Explicit WSE Calendar capture bindings')
     parser.add_argument('--output', required=True, help='JSON report destination (use workspace/)')
     parser.add_argument('--event-log', help='Instruction milestone JSONL destination (use workspace/)')
     args = parser.parse_args(argv)
     try:
-        report = simulate(args.capture_dir, args.config)
+        report = simulate(args.capture_dir, args.config, communication_plan=args.communication_plan)
     except ModelError as exc:
         parser.exit(2, f'{exc}\n')
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)

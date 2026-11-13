@@ -11,6 +11,14 @@ class Clock:
         self.log_messages = log_messages
         self.messages = []
 
+    def external(self, destination, message, cycle, time_ns):
+        # Called before deliver/tick on the first core edge at or after NoC completion.
+        self.pending.append(Envelope('noc', destination, 'router', message, cycle, cycle))
+        if self.log_messages:
+            self.messages.append(dict(source='noc', destination=destination, port='router',
+                                      type=type(message).__name__, sent=cycle, received=cycle,
+                                      network_time_ns_exact=str(time_ns), **asdict(message)))
+
     def deliver(self, cycle):
         waiting = []
         for envelope in self.pending:

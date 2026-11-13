@@ -32,6 +32,11 @@ class Simulator:
                 for unit, cls in (('cube', Cube), ('vector', Vector)):
                     name = core_name(core, f'pe:{pe}/{unit}')
                     self.components[name] = cls(name, {i.id: i for i in real if unit_name(i) == name}, config)
+        self.noc = None
+        if trace.calendar_phases:
+            from .components.noc import CalendarNoC
+            self.noc = CalendarNoC(self.nodes, trace.calendar_phases, config)
+            self.components['noc'] = self.noc
         self.clock = Clock(self.components, config.get('message_log', False))
         self.tick_order = list(tick_order) if tick_order is not None else sorted(self.components)
         if len(self.tick_order) != len(self.components) or set(self.tick_order) != set(self.components):
@@ -45,6 +50,9 @@ class Simulator:
     def run(self):
         while True:
             before = sum(c.progress for c in self.components.values())
+            if self.noc is not None:
+                for destination, message, time_ns in self.noc.advance(self.cycle):
+                    self.clock.external(destination, message, self.cycle, time_ns)
             self.clock.deliver(self.cycle)
             for name in self.tick_order:
                 self.components[name].tick(self.cycle)

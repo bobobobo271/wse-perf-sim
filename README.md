@@ -1,3 +1,17 @@
+# wse-perf-sim
+
+在 ssnpu-model 的 PyPTO capture 导入与核模型上接入纯 Python WSE40 Calendar NoC。每核 NoC 端点是 SharedTileReg，SRAM 只作为 local memory；保留原 SSNPU API 和归档负载。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --output-dir workspace/wse40
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --sram --output-dir workspace/wse40-sram
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m unittest discover -s tests -v
+```
+
+[WSE 参数、输入计划与执行语义](docs/WSE.md) · [测试条件和结果](docs/VALIDATION.md)
+
+下面保留原 SSNPU 模型说明；无通信计划时仍按原逻辑验证配置运行。
+
 # SSNPU Python tile 模型
 
 Python 3.11+、仅标准库。读取 workload capture v2 / SSNPU v1，采用独立组件、消息队列和周期驱动。每 Core 建立 Scheduler、ROB、TileReg、TLSU、Sync，每 PE 建立 Cube、Vector。Core 间资源独立，PE 数默认 4。参数用于逻辑验证，尚未校准硬件周期精度。
@@ -84,3 +98,5 @@ Simulator 将指令派给 Cube、Vector、TLSU，各单元内部实现自己的�
 路径表默认将 DDR/L1/L2 映射到 memory；路径项可设为 `{"engine":"memory","throughput":512,"latency":4}`。各计算类别支持 dtype_overrides。配置记录数值、单位、作用域、含义和来源。
 
 [DESIGN.md](DESIGN.md) 说明组件协议、存储生命周期、可手算周期和 load→matmul→store 的代码阅读顺序。[examples/](examples/README.md) 的 capture、源码和历史报告保留原样，旧报告周期仅供比较。
+
+任意节点组的 AllGather 可用 `ssnpu_model.noc_plan.allgather_group` 自动生成多树路由和发送窗口，再交给 `simulate(..., communication_plan=plan)`。用法见 [WSE 自动规划](docs/WSE.md#自动规划)。

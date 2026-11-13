@@ -69,4 +69,62 @@ def validate_config(c):
                 raise ModelError(f'Unsupported path engine {path}: {engine}')
     except (KeyError, TypeError) as exc:
         raise ModelError(f'Incomplete configuration: {exc}') from exc
+    if "wse" in c:
+        validate_wse(c)
     return c
+
+
+# Values retain their provenance; none of the pending values are hardware calibration.
+WSE_PARAMETERS = {
+    'core_clock_hz': (1400000000, 'Hz', 'documented'),
+    'noc_clock_hz': (2000000000, 'Hz', 'documented'),
+    'link_bytes_per_cycle': (64, 'B/NoC cycle/direction', 'documented'),
+    'header_bytes': (12, 'B/flit', 'pending'),
+    'hop_cycles': (1, 'NoC cycle', 'pending'),
+    'tx_cdc_cycles': (2, 'NoC cycle', 'pending'),
+    'rx_cdc_cycles': (2, 'NoC cycle', 'pending'),
+    'alignment_cycles': (16, 'NoC cycle', 'pending'),
+    'arm_cycles': (8, 'NoC cycle', 'pending'),
+    'guard_cycles': (1, 'NoC cycle', 'pending'),
+    'slot_cycles': (1024, 'NoC cycle', 'pending'),
+    'slots_per_period': (8, 'slots', 'pending'),
+    'epoch_bits': (8, 'bit', 'pending'),
+    'sram_capacity_bytes': (384 * 1024 * 1024, 'B/core', 'documented'),
+    'sram_bandwidth': (1000000000000, 'B/s/core, shared read/write', 'configured'),
+    'sram_read_startup_ns': (100, 'ns', 'configured'),
+    'sram_write_startup_ns': (100, 'ns', 'configured'),
+}
+
+
+def wse_config():
+    c = default_config()
+    c['name'] = 'wse40-shared-tile-pending'
+    c['wse'] = {k: dict(value=v, unit=u, status=s,
+                         source=('WSE whitepaper v0.2' if s == 'documented' else
+                                 'user-confirmed first-version model; 2026-11-13'))
+                for k, (v, u, s) in WSE_PARAMETERS.items()}
+    for k in ('local_capacity', 'shared_capacity'):
+        c['parameters'][k]['status'] = 'pending'
+    for k in ('shared_read', 'shared_write'):
+        c['engines'][k]['status'] = 'pending'
+    # A capture must explicitly identify local memory; no DDR/HBM reinterpretation.
+    c['paths'] = {'SRAM': 'memory'}
+    return c
+
+
+def validate_wse(c):
+    p = c['wse']
+    if set(p) != set(WSE_PARAMETERS):
+        raise ModelError('WSE parameter keys differ from the supported profile')
+    zero_ok = {'tx_cdc_cycles', 'rx_cdc_cycles', 'alignment_cycles', 'arm_cycles',
+               'guard_cycles', 'sram_read_startup_ns', 'sram_write_startup_ns'}
+    for k, entry in p.items():
+        value = entry['value']
+        if type(value) is not int or value < (0 if k in zero_ok else 1):
+            raise ModelError(f'Invalid WSE parameter {k}: {value}')
+        if entry.get('status') not in {'documented', 'pending', 'configured'} or not entry.get('source'):
+            raise ModelError(f'Missing WSE provenance: {k}')
+    if p['header_bytes']['value'] >= p['link_bytes_per_cycle']['value']:
+        raise ModelError('No flit payload capacity')
+    if c['engines']['shared_write'].get('dtype_overrides'):
+        raise ModelError('WSE reservations require one dtype-independent shared write service')

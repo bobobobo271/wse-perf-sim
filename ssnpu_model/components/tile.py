@@ -6,6 +6,9 @@ from .base import Component
 from .protocol import (Access, AccessDone, Allocate, Allocated, Complete, Consumed,
                        Dispatch, core_name, unit_name)
 from .service import Service
+from ..errors import ModelError
+from .protocol import (ReceivePrepare, PortFence, WriteReservations, RouterWrite,
+                       PublishReceive, CalendarReply)
 
 
 class TileReg(Component):
@@ -19,6 +22,8 @@ class TileReg(Component):
         self.ready, self.done = set(), set()
         self.allocations, self.accesses, self.running = [], [], []
         self.blocked = {}
+        self.receives, self.reservations = {}, {}
+        self.port_fences, self.router_running = set(), []
         self.waits = defaultdict(Counter)
 
     def finish_instruction(self, key):
@@ -42,6 +47,11 @@ class TileReg(Component):
         self.storage_events.append(event)
 
     def allocate(self, instruction):
+        if instruction.raw['ir_op'] == 'calendar.post':
+            instruction = self.nodes[instruction.raw['calendar']['reserve_for']]
+        # Post reserves the receive producer's output; await must not allocate it twice.
+        if instruction.raw['ir_op'] == 'calendar.receive' and instruction.outputs <= self.active:
+            return None
         delta, replace = Counter(), set()
         for key in sorted(instruction.outputs, key=str):
             v = self.versions[key]
@@ -73,6 +83,11 @@ class TileReg(Component):
         e = self.config['engines'][engine]
         cost = e | e.get('dtype_overrides', {}).get(request.dtype, {})
         i = self.nodes[request.instruction]
+        duration = max(1, math.ceil(request.work / cost['throughput']))
+        if request.write and (self.port_fences or any(
+                self.cycle < start + service and start < self.cycle + duration
+                for start, service, _ in self.reservations.values())):
+            return None
         return self.service.start(core_name(i.core, engine), engine, request.work,
                                   max(1, math.ceil(request.work / cost['throughput'])), cost['latency'], self.cycle)
 
@@ -82,8 +97,79 @@ class TileReg(Component):
         self.send(unit_name(self.nodes[request.instruction]),
                   AccessDone(request.instruction, request.request), 'access')
 
+    def calendar_message(self, message):
+        if not isinstance(message, (ReceivePrepare, PortFence, WriteReservations, RouterWrite, PublishReceive)):
+            return False
+        key = message.instruction
+        i = self.nodes[key]
+        version, = i.outputs
+        if version not in self.active:
+            raise ModelError(f'Calendar accesses an inactive generation: {key}')
+        if isinstance(message, ReceivePrepare):
+            if message.version != version or key in self.receives:
+                raise ModelError('Invalid or duplicate receive registration')
+            expected = {source: (offset, size) for source, offset, size in message.expected}
+            cursor = 0
+            for offset, size in sorted(expected.values()):
+                if offset != cursor or size <= 0:
+                    raise ModelError('Overlapping or incomplete receive authorization')
+                cursor += size
+            if cursor != self.versions[version].size or len(expected) != len(message.expected):
+                raise ModelError('Invalid receive coverage')
+            self.receives[key] = dict(version=version, expected=expected, pending=set(), committed=set(), published=False)
+            self.send('noc', CalendarReply(key, 'posted'))
+        elif isinstance(message, PortFence):
+            if key not in self.receives:
+                raise ModelError('Port fence before receive registration')
+            self.port_fences.add(key)
+            available = max(self.cycle, self.service.available[core_name(i.core, 'shared_write')])
+            self.send('noc', CalendarReply(key, 'port_ready', available))
+        elif isinstance(message, WriteReservations):
+            if key not in self.port_fences:
+                raise ModelError('Write reservation without admission fence')
+            expected = self.receives[key]['expected']
+            if {entry[0] for entry in message.entries} != set(expected):
+                raise ModelError('Reservation coverage differs from receive coverage')
+            for source, start, service, latency in message.entries:
+                if (key, source) in self.reservations or start < self.cycle:
+                    raise ModelError('Duplicate or late write reservation')
+                for old_start, old_service, _ in self.reservations.values():
+                    if start < old_start + old_service and old_start < start + service:
+                        raise ModelError('Shared write reservations overlap')
+                self.reservations[key, source] = start, service, latency
+            self.port_fences.remove(key)
+            self.send('noc', CalendarReply(key, 'reserved'))
+        elif isinstance(message, RouterWrite):
+            ctx = self.receives[key]
+            if message.version != version or ctx['version'] != version:
+                raise ModelError('Stale router write generation')
+            if ctx['expected'].get(message.source) != (message.offset, message.work):
+                raise ModelError('Router write is outside its authorized segment')
+            if message.source in ctx['pending'] | ctx['committed']:
+                return True  # Identical duplicates, including pending writes, never count twice.
+            start, service, latency = self.reservations.pop((key, message.source))
+            if self.cycle != start:
+                raise ModelError('Router missed its reserved write window')
+            event = self.service.start(core_name(i.core, 'shared_write'), 'shared_write',
+                                       message.work, service, latency, self.cycle)
+            if event is None:
+                raise ModelError('Reserved Shared write port is busy')
+            ctx['pending'].add(message.source)
+            self.observe(key, stage=event)
+            self.router_running.append((message, event['complete']))
+        elif isinstance(message, PublishReceive):
+            ctx = self.receives[key]
+            if ctx['published'] or ctx['pending'] or ctx['committed'] != set(ctx['expected']):
+                raise ModelError('Premature or duplicate receive publication')
+            self.ready.add(version)
+            ctx['published'] = True
+            self.send('noc', CalendarReply(key, 'published'))
+        return True
+
     def tick(self, cycle):
         for _, message in self.inputs(cycle):
+            if self.calendar_message(message):
+                continue
             if isinstance(message, Allocate):
                 self.allocations.append(message)
             elif isinstance(message, Access):
@@ -100,6 +186,13 @@ class TileReg(Component):
                 self.finish_instruction(i.id)
             else:
                 raise TypeError(message)
+        for message, end in list(self.router_running):
+            if end <= cycle:
+                ctx = self.receives[message.instruction]
+                ctx['pending'].remove(message.source)
+                ctx['committed'].add(message.source)
+                self.send('noc', CalendarReply(message.instruction, 'written', (message.source, end)))
+                self.router_running.remove((message, end))
         for request, end in list(self.running):
             if end <= cycle:
                 self.respond(request)
@@ -136,13 +229,17 @@ class TileReg(Component):
             self.accesses.remove(request)
 
     def is_idle(self):
-        return super().is_idle() and not (self.allocations or self.accesses or self.running)
+        return super().is_idle() and not (self.allocations or self.accesses or self.running
+                                               or self.router_running or self.port_fences or self.reservations)
 
     def next_event(self):
-        return min((end for _, end in self.running), default=None)
+        return min((end for _, end in self.running + self.router_running), default=None)
 
     def snapshot(self):
-        return dict(super().snapshot(), allocations=[r.request for r in self.allocations],
+        return dict(super().snapshot(), calendar_receives={str(k): dict(pending=sorted(v['pending']),
+                    committed=sorted(v['committed']), published=v['published']) for k, v in self.receives.items()},
+                    write_reservations={str(k): v for k, v in self.reservations.items()},
+                    port_fences=sorted(self.port_fences), allocations=[r.request for r in self.allocations],
                     accesses=[r.request for r in self.accesses],
                     running=[(r.request, end) for r, end in self.running], blocked=self.blocked.copy(),
                     usage=dict(self.usage), active=[list(k) for k in sorted(self.active, key=str)],

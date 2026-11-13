@@ -20,6 +20,12 @@ PHASES = (
     ('compute (service + result latency)', 'compute_start', 'compute_end'),
     ('writeback', 'writeback_start', 'writeback_end'),
 )
+CALENDAR_PHASES = {
+    'calendar.post': (('receive registration', 'received', 'complete'),),
+    'calendar.send': (('source access', 'received', 'operands_ready'),
+                      ('Calendar wait + TX drain', 'operands_ready', 'complete')),
+    'calendar.receive': (('receive wait + publication', 'received', 'complete'),),
+}
 IDENTITY = ('op_id', 'ir_op', 'core', 'pe', 'execution_component')
 
 
@@ -58,7 +64,12 @@ def to_perfetto(events, cycle_ns=1.0):
             if name not in times:
                 raise ModelError(f'Missing {name} for instruction {key}')
         optional = ('received', 'operands_ready', 'compute_start', 'compute_end', 'writeback_start', 'writeback_end')
-        for group in (optional, ('allocation_request', 'allocated')):
+        phase_group = optional
+        if identity['ir_op'] in CALENDAR_PHASES:
+            phase_group = ('received', 'operands_ready') if identity['ir_op'] == 'calendar.send' else ('received',)
+            if not all(k in times for k in phase_group):
+                raise ModelError(f'Incomplete Calendar timestamps for instruction {key}')
+        for group in (phase_group, ('allocation_request', 'allocated')):
             if any(k in times for k in group) and not all(k in times for k in group):
                 raise ModelError(f'Incomplete phase timestamps for instruction {key}')
         order = ('allocation_request', 'allocated', 'issue', *optional, 'complete', 'rob_complete', 'retire')
@@ -125,7 +136,7 @@ def to_perfetto(events, cycle_ns=1.0):
             if role == 'execution':
                 span(label, begin, finish, 'ssnpu.instruction',
                      {'interval_start_event': 'received' if 'received' in times else 'issue'})
-                phases = PHASES
+                phases = CALENDAR_PHASES.get(identity['ir_op'], PHASES)
             else:
                 span(label + ' / ROB', begin, finish, 'ssnpu.rob')
                 phases = (('ROB notification', 'complete', 'rob_complete'),

@@ -91,4 +91,12 @@ def build_report(sim):
     }
     if sim.clock.log_messages:
         report['messages'] = sim.clock.messages
+    if sim.noc is not None:
+        report['noc'] = sim.noc.report()
+        report['communication_plan'] = sim.trace.communication_plan
+        elapsed = cycle * sim.noc.core_ns
+        report['total_time_ns'] = float(elapsed)
+        report['total_time_ns_exact'] = str(elapsed)
+        report['assumptions'][2] = ('Core messages arrive next core cycle; network events use exact time, '
+                                    'with CDC and ceiling to the receiving core edge.')
     return report
