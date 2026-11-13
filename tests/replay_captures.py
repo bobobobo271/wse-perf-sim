@@ -32,7 +32,8 @@ for capture in args.captures:
                         last_node_complete_cycle=report['last_node_complete_cycle'],
                         core_completion=report['core_completion'],
                         storage_peak_bytes=report['storage_peak_bytes'],
+                        rob_windows=report['rob_windows'],
                         audit='PASS: unique instructions, dependencies, issue limits, resource intervals, '
-                              'operand handshakes, retirement, capacity and exact allocation/free lifetimes'))
+                              'operand handshakes, admission windows, retirement, capacity and exact allocation/free lifetimes'))
     print(json.dumps(summary[-1]), flush=True)
 (out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')

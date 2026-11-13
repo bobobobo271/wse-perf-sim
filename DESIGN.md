@@ -9,13 +9,13 @@
 | 组件 | 独占的动态状态 |
 |---|---|
 | Scheduler | 依赖完成集合、待发射窗口、分配请求状态、PE 轮转与发射额度 |
-| ROB | 按原始线程顺序预加载的无限条目、完成状态、退休头 |
+| ROB | 按原始线程顺序预加载的条目、准入游标、窗口占用、完成状态、退休头 |
 | TileReg | local/shared 容量、版本 ready、完整消费者完成集合、分配等待、共享读写端口 |
 | Cube / Vector | 多条在途命令、有序操作数访问、计算服务、结果延迟及写回等待 |
 | TLSU | Core 内存服务与路径 cost、load 写回、store 输入读取及内存写入完成 |
 | Sync | 控制节点依赖、barrier 延迟、task 放行 |
 
-窗口、消息队列和 ROB 无限；PE/Core 发射宽度、计算与搬运吞吐、tile 容量和同步限制继续生效。多个 Core 的资源独立，完成广播可跨 Core 传递 task / barrier 依赖；不支持跨 Core tile 数据通信。
+ROB 按线程限制已准入但未退休的指令数（rob_depth 为正整数或 null，缺省无限）；消息和执行单元队列无限；PE/Core 发射宽度、计算与搬运吞吐、tile 容量和同步限制继续生效。多个 Core 的资源独立，完成广播可跨 Core 传递 task / barrier 依赖；不支持跨 Core tile 数据通信。
 
 ## 时钟与消息
 
@@ -31,6 +31,7 @@
 
 | 消息 | 发送方 → 接收方 | 含义 |
 |---|---|---|
+| Admitted | ROB → Scheduler | 已占线程窗口槽位，下一周期允许检查依赖及预留输出 |
 | Allocate / Allocated | Scheduler ↔ TileReg | 原子保留全部输出，等待期间不重复请求 |
 | Dispatch | Scheduler → Cube / Vector / TLSU / TileReg | 已分配命令；view 交给 TileReg |
 | Issued | Scheduler / Sync → ROB | 发射通知 |
@@ -38,11 +39,11 @@
 | Complete / Completed | 执行单元 / TileReg / Sync → ROB → 各 Scheduler / Sync | 最终完成与依赖广播 |
 | Consumed | 执行单元 → TileReg | 指令已完成，输入不再使用，输出可检查释放 |
 
-ROB 在加载时按 `_identity` 和 `age` 建立线程条目。发射可以乱序，完成立即广播，退休只从各线程头推进。控制节点单独跟踪退休，不用 PE 的线程位置模拟 barrier。零延迟控制节点同周期发送 Issued 和 Complete，仍经历消息交付。依赖唤醒与 TileReg 释放均不等待退休。
+ROB 在加载时按 `_identity` 和 `age` 建立线程条目。每周期先处理完成消息、按序退休，再按程序顺序填补空位；退休和准入宽度无限。准入占槽位，按序退休归还，完成但未退休仍占容量。view 计入窗口；控制节点不参与准入，由 Sync 管理。无限配置也通过同一 Admitted 消息路径。发射可以乱序，完成立即广播，退休只从各线程头推进。控制节点单独跟踪退休，不用 PE 的线程位置模拟 barrier。零延迟控制节点同周期发送 Issued 和 Complete，仍经历消息交付。依赖唤醒与 TileReg 释放均不等待退休。
 
 ## 发射、服务与完成
 
-Scheduler 确认数据和同步依赖后，只发送一次输出分配请求。TileReg 原子分配所有输出或保留请求等待；已保留容量在等待发射时继续占用。收到成功响应后，Scheduler 按 PE 间轮转、PE 内最老就绪顺序发射，成功派发才消耗 PE/Core 额度。资源繁忙由执行组件排队处理，不阻止 Scheduler 派发其他命令。
+Scheduler 从 waiting_admission 开始，收到 Admitted 后进入 waiting_dependencies；确认数据和同步依赖后，只发送一次输出分配请求。TileReg 原子分配所有输出或保留请求等待；已保留容量在等待发射时继续占用。收到成功响应后，Scheduler 按 PE 间轮转、PE 内最老就绪顺序发射，成功派发才消耗 PE/Core 额度。资源繁忙由执行组件排队处理，不阻止 Scheduler 派发其他命令。
 
 Cube / Vector / TLSU 顺序请求每个 tile 输入，包括私有输入；无 tile 输入的命令可在接收周期进入计算。等待输入或结果的旧命令不阻塞其他就绪命令。就绪命令按 `(task, age, id)` 仲裁，各组件独立推进自己的服务。exp、cast、reduce 与逐元素计算共享该 PE 的 Vector 资源。
 
@@ -70,19 +71,20 @@ TileReg 是唯一可修改版本 ready、容量和消费者完成状态的组件
 
 `total_cycles` 是从周期 0 开始，所有指令和控制节点完成、ROB 退休、消费释放消息与完成广播全部处理完毕的最后周期编号。另列 `last_instruction_complete_cycle`（不含控制节点）和 `last_node_complete_cycle`（含控制节点），区分执行结束与收尾。
 
-时间线保留 issue、complete、stages，增加 queued、allocation_request、allocated、received、operands_ready、compute_start/end、writeback_start/end、retire。accesses 列出每个操作数请求与响应的周期，transitions 列出各组件状态转换。component 表示最终所在组件（退休时为 ROB），execution_component 保留执行单元；view 和控制节点没有不存在的计算/分配阶段。
+时间线保留 issue、complete、stages，增加 queued、admitted、admission_received、allocation_request、allocated、received、operands_ready、compute_start/end、writeback_start/end、retire。accesses 列出每个操作数请求与响应的周期，transitions 列出各组件状态转换。component 表示最终所在组件（退休时为 ROB），execution_component 保留执行单元；view 和控制节点没有不存在的计算/分配阶段。
 
-ROB 收到 Complete 时记录 rob_complete，早于或等于 retire。报告的 instruction_events 将各组件实际记录的里程碑打点按周期输出，CLI 的 --event-log 可另存 JSONL。每行携带指令身份、执行单元与记录事件的组件，画流水图可直接配对 issue / rob_complete；细分阶段可使用 compute_start/end 与 writeback_start/end。消息延迟固定为一周期，因此 rob_complete=complete+1，而退休可因同线程更老指令未完成而延后。
+ROB 准入记录 admitted，Scheduler 下一拍记录 admission_received；窗口外指令只能等待准入，不能申请输出或派发。ROB 收到 Complete 时记录 rob_complete，早于或等于 retire。报告的 instruction_events 将各组件实际记录的里程碑打点按周期输出，CLI 的 --event-log 可另存 JSONL。每行携带指令身份、执行单元与记录事件的组件，画流水图可直接配对 issue / rob_complete；细分阶段可使用 compute_start/end 与 writeback_start/end。消息延迟固定为一周期，因此 rob_complete=complete+1，而退休可因同线程更老指令未完成而延后。
 
 设置配置顶层 `"message_log": true` 输出 messages，默认关闭。每条日志包含 type、instruction、source、destination、port、sent、received，以及该消息的请求/版本等字段。资源利用率只计算服务时间，不包含消息延迟。wait_reason_sets 统计等待指令周期，TileReg 容量等待和 Scheduler 等待可重叠，不可直接相加；内部计算资源等待另列。
 
-没有消息在途、没有内部未来服务结果且一个周期没有进展时，Simulator 抛出 ModelError，包含所有组件快照：分配/访问请求、队列、依赖、在途结果、占用版本、消费者及具体容量阻塞。`Simulator.snapshot()` 也可主动调用。完成报告包含组件最终快照。
+没有消息在途、没有内部未来服务结果且一个周期没有进展时，Simulator 抛出 ModelError，包含所有组件快照：分配/访问请求、队列、依赖、在途结果、占用版本、消费者及具体容量阻塞。`Simulator.snapshot()` 也可主动调用。完成报告包含组件最终快照。ROB 的 windows 显示窗口内指令、退休头 retirement_head 和下一条待准入 next_admission。报告 rob_windows 按组件及线程列出容量 capacity、当前 occupancy、峰值 peak 和 full_cycles；full_cycles 在每拍退休、补入后统计窗口满且仍有待准入指令的周期数。
 
 ## 从 load → matmul → store 阅读代码
 
 先读 `api.py` 和 `simulator.py` 的组装与时钟循环，再按下列消息流读组件。假设 B 已就绪，load 产生 A，matmul 产生 C，store 写回 DDR：
 
 ```text
+ROB --Admitted(load)--> Scheduler
 Scheduler --Allocate(A)--> TileReg --Allocated--> Scheduler
 Scheduler --Issued(load)--> ROB
 Scheduler --Dispatch(load)--> TLSU
@@ -104,12 +106,12 @@ TLSU [memory write service + latency] --Complete(store)--> ROB
 
 每条箭头固定占一周期。依次阅读 `components/scheduler.py`、`tile.py`、`tlsu.py` / `execution.py`、`cube.py`、`rob.py`；再读 `sync.py` 理解尾部 barrier 与 task 完成。Vector 使用相同的小型命令结构，服务资源为共享 Vector。
 
-可手算基准：4 元素 full，throughput=4、latency=2、私有输出。周期 0 请求分配，1 分配，2 派发，3 接收并计算，4 服务结束，6 结果产生并请求写入，7 写入，8 响应并完成，9 ROB 接收完成并退休、TileReg 处理消费，10 完成广播交付。单任务完成节点于 10 完成，11 退休，12 最后广播交付，所以 total_cycles=12。该期望由协议推导，不沿用旧周期数。
+可手算基准：4 元素 full，throughput=4、latency=2、私有输出。周期 0 准入，1 Scheduler 收到通知并请求分配，2 分配，3 派发，4 接收并计算，5 服务结束，7 结果产生并请求写入，8 写入，9 响应并完成，10 ROB 接收完成并退休、TileReg 处理消费，11 完成广播交付。单任务完成节点于 11 完成，12 退休，13 最后广播交付，所以 total_cycles=13。该期望由协议推导，不沿用旧周期数。
 
 ## 验证和边界
 
-`tests/test_components.py` 独立驱动各组件，验证下一周期可见、ROB 乱序完成/按序退休、一次分配、原子容量等待、有序操作数、就绪绕过、服务与结果重叠、共享端口、完整消费者释放、store 完成和 Sync 空阶段。反转及随机打乱 tick 顺序后，报告和消息日志必须逐项一致。`test_model.py` 覆盖完整数据流和异常；回放审计核查指令唯一性、依赖、额度、服务区间、访问握手、退休、分配/释放唯一性和容量上下界。
+`tests/test_components.py` 独立驱动各组件，验证下一周期可见、ROB 乱序完成/按序退休、一次分配、原子容量等待、有序操作数、就绪绕过、服务与结果重叠、共享端口、完整消费者释放、store 完成和 Sync 空阶段。反转及随机打乱 tick 顺序后，报告和消息日志必须逐项一致。`test_rob_window.py` 验证容量、年轻指令完成仍占槽位、窗口内绕过、view/control 计数、配置兼容、快照与有限模式调用顺序；`test_model.py` 覆盖完整数据流和异常；回放审计核查指令唯一性、依赖、额度、服务区间、访问握手、准入/退休及窗口占用独立重建、分配/释放唯一性和容量上下界。
 
-默认合成配置下，本轮 matmul 为 168 条 / 7041 周期，FA 为 320 条 / 2182 周期，ooo 为 3 条 / 22 周期。examples 的历史归档不改写；周期变化仅供观察，不作为新模型验收依据。新示例、测试临时 capture 和运行报告写入上级 workspace/ssnpu-components。
+合成配置回放中，matmul 为 168 条 / 7042 周期，FA 为 320 条 / 2183 周期；无限、4、16 三种深度的总周期在这两份 capture 上相同。matmul 的最大单线程窗口峰值分别为 24、4、16，FA 为 43、4、16，所有窗口最终占用为 0。新准入握手使无限模式也比旧模型多一拍启动延迟，不要求旧周期数完全一致。examples 的历史归档不改写。配置、完整报告、事件日志、Perfetto 和汇总保存在上级 workspace/rob-depth；测试临时 capture 仍写入 workspace/ssnpu-components/tests。
 
-当前不模拟数值正确性、多核互连、广播合并、缓存驻留、bank 冲突、有限窗口/ROB，以及单条指令内部多个操作数/计算阶段的重叠。速率全部是未校准的合成值。
+当前不模拟数值正确性、多核互连、广播合并、缓存驻留、bank 冲突，以及单条指令内部多个操作数/计算阶段的重叠。速率全部是未校准的合成值。

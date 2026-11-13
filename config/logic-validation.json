@@ -22,6 +22,13 @@
       "meaning": "Maximum tile issues per cycle",
       "source": "synthetic logical validation; uncalibrated"
     },
+    "rob_depth": {
+      "value": null,
+      "unit": "instruction",
+      "scope": "thread",
+      "meaning": "Maximum admitted but not retired instructions",
+      "source": "synthetic logical validation; uncalibrated"
+    },
     "local_capacity": {
       "value": 1048576,
       "unit": "byte",

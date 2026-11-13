@@ -10,7 +10,7 @@ from ssnpu_model.clock import Clock
 from ssnpu_model.cli import main
 from ssnpu_model.components import Component, Cube, TLSU, ROB, Scheduler, Sync, TileReg, Vector
 from ssnpu_model.components.protocol import (
-    Access, AccessDone, Allocate, Allocated, Complete, Completed, Consumed, Dispatch, Issued,
+    Access, AccessDone, Admitted, Allocate, Allocated, Complete, Completed, Consumed, Dispatch, Issued,
 )
 from ssnpu_model.trace import TraceAdapter
 from test_model import ModelTestCase, audit, fixture, op, tile
@@ -46,15 +46,17 @@ class ProtocolTests(ModelTestCase):
     def test_rob_completion_bypasses_thread_retirement(self):
         trace = self.trace([op(0), op(1)])
         rob = ROB('rob', [trace.instructions[1], trace.instructions[0]], ['scheduler', 'sync'])
+        rob.tick(0)
+        self.assertEqual([m for _, _, m in rob.drain_outputs()], [Admitted(0), Admitted(1)])
         rob.receive('issue', Issued(1))
         rob.receive('issue', Issued(0))
-        rob.tick(0)
-        rob.receive('completion', Complete(1))
         rob.tick(1)
+        rob.receive('completion', Complete(1))
+        rob.tick(2)
         self.assertEqual(rob.entries, {1: 'complete', 0: 'issued'})
         self.assertEqual(rob.drain_outputs(), [
             ('scheduler', 'completion', Completed(1)), ('sync', 'completion', Completed(1))])
-        self.assertEqual(rob.observations, [(1, 1, dict(rob_complete=1, component='rob', state='rob_complete'))])
+        self.assertEqual(rob.observations[-1], (2, 1, dict(rob_complete=2, component='rob', state='rob_complete')))
         rob.receive('completion', Complete(0))
         rob.tick(3)
         self.assertEqual([k for _, k, fields in rob.observations if 'retire' in fields], [0, 1])
@@ -65,10 +67,14 @@ class ProtocolTests(ModelTestCase):
         trace = self.trace([op(0), op(1)])
         scheduler = Scheduler('core:0/scheduler', [trace.instructions[k] for k in (0, 1)], self.c)
         scheduler.tick(0)
+        self.assertEqual(scheduler.drain_outputs(), [])
+        for key in (0, 1):
+            scheduler.receive('admission', Admitted(key))
+        scheduler.tick(1)
         requests = scheduler.drain_outputs()
         self.assertEqual([m.instruction for _, _, m in requests], [0, 1])
         self.assertTrue(all(isinstance(m, Allocate) for _, _, m in requests))
-        for cycle in range(1, 4):
+        for cycle in range(2, 4):
             scheduler.tick(cycle)
             self.assertEqual(scheduler.drain_outputs(), [])
         for _, _, request in requests:
@@ -296,7 +302,7 @@ class ProtocolTests(ModelTestCase):
                 self.assertEqual(matching[0]['execution_component'], row['execution_component'])
         self.assertEqual({e['event']: e['cycle'] for e in events if e['op_id'] == 0 and
                           e['event'] in ('issue', 'complete', 'rob_complete', 'retire')},
-                         dict(issue=2, complete=8, rob_complete=9, retire=9))
+                         dict(issue=3, complete=9, rob_complete=10, retire=10))
         config, output, log = (self.path / name for name in ('config.json', 'report.json', 'events.jsonl'))
         config.write_text(json.dumps(self.c))
         with redirect_stdout(io.StringIO()):

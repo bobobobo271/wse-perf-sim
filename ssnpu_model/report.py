@@ -1,19 +1,22 @@
 """Collect component observations and statistics without changing model state."""
 from collections import Counter, defaultdict
 
-from .components import Cube, Vector, TLSU, Scheduler, TileReg
+from .components import Cube, Vector, TLSU, ROB, Scheduler, TileReg
 
 
 def build_report(sim):
+    # 仿真结束后只读汇总各组件 observe 打点；报告不参与时钟、消息或资源状态推进。
     nodes, cycle = sim.nodes, sim.cycle
     timeline = {k: dict(op_id=k, ir_op=i.raw['ir_op'], core=i.core, pe=i.pe,
                         queued=0, stages=[], accesses=[], transitions=[]) for k, i in nodes.items()}
     busy, byte_counts, usage, peak, stage_waits = (Counter() for _ in range(5))
     waits, observations, storage_events = defaultdict(Counter), [], []
     instruction_events = []
-    milestones = {'allocation_request', 'allocated', 'issue', 'received', 'operands_ready',
+    milestones = {'admitted', 'admission_received', 'allocation_request', 'allocated', 'issue', 'received', 'operands_ready',
                   'compute_start', 'compute_end', 'writeback_start', 'writeback_end',
                   'complete', 'rob_complete', 'retire'}
+    # complete 是发送 Complete 的时刻，rob_complete 是 ROB 收到消息的时刻，retire 是按序退休。
+    # 三者分别保留，便于区分执行延迟、消息传递和退休等待。
     for name, component in sorted(sim.components.items()):
         observations.extend((time, name, index, key, fields)
                             for index, (time, key, fields) in enumerate(component.observations))
@@ -73,11 +76,16 @@ def build_report(sim):
         'storage_events': sorted(storage_events, key=lambda e: e['cycle']),
         'wait_reason_sets': {k: dict(v) for k, v in waits.items()},
         'internal_stage_resource_wait_cycles': dict(stage_waits),
+        'rob_windows': {name: component.window_stats() for name, component in sorted(sim.components.items())
+                        if isinstance(component, ROB)},
         'components': sim.snapshot()['components'],
         'config': sim.config,
         'assumptions': [
             'Synthetic rates; hardware cycle accuracy has not been calibrated.',
-            'Unlimited window/ROB; order_dependencies establish age, not completion.',
+            'Per-thread rob_depth limits admitted but not retired instructions; null is unlimited.',
+            'Views occupy ROB slots; synthetic control nodes bypass admission via Sync.',
+            'ROB full_cycles counts post-refill cycles with a full window and pending admission.',
+            'order_dependencies establish age, not completion.',
             'Components tick once per cycle; every message is delivered next cycle.',
             'Ordered operand handshakes; ready commands arbitrate independently by age.',
             'Private TileReg service included in compute cost; message round trips remain.',

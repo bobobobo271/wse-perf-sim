@@ -9,19 +9,22 @@ from .report import build_report
 
 
 class Simulator:
+    """模型装配与时钟循环；具体发射、执行和释放由各组件自己推进。"""
     def __init__(self, trace, config, tick_order=None):
         self.trace, self.config = trace, config
         self.nodes = trace.instructions
         self.components = {}
         cores = sorted({i.core for i in self.nodes.values()})
         subscribers = [core_name(c, unit) for c in cores for unit in ('scheduler', 'sync')]
+        # 每个 ROB 向所有 Core 的 Scheduler/Sync 广播，跨 Core 的 task 依赖也能唤醒。
         for core in cores:
             nodes = {k: i for k, i in self.nodes.items() if i.core == core}
             real = [i for i in nodes.values() if not i.control]
             control = [i for i in nodes.values() if i.control]
             for unit, component in (
                 ('scheduler', Scheduler(core_name(core, 'scheduler'), real, config)),
-                ('rob', ROB(core_name(core, 'rob'), list(nodes.values()), subscribers)),
+                ('rob', ROB(core_name(core, 'rob'), list(nodes.values()), subscribers,
+                            config['parameters'].get('rob_depth', {}).get('value'))),
                 ('tile', TileReg(core_name(core, 'tile'), nodes, trace.versions, config)),
                 ('sync', Sync(core_name(core, 'sync'), control, config)),
                 ('tlsu', TLSU(core_name(core, 'tlsu'),
@@ -45,14 +48,18 @@ class Simulator:
     def run(self):
         while True:
             before = sum(c.progress for c in self.components.values())
+            # 固定周期协议：交付上一拍消息 → 每组件运行一次 → 收集本拍新消息。
+            # collect 之前不会交付新消息，因此调整组件调用顺序不会产生同拍旁路。
             self.clock.deliver(self.cycle)
             for name in self.tick_order:
                 self.components[name].tick(self.cycle)
             self.clock.collect(self.cycle)
+            # 完成不只看计算结束：还必须等退休、消费通知及所有在途消息处理完。
             if not self.clock.pending and all(c.is_idle() for c in self.components.values()):
                 return build_report(self)
             progress = sum(c.progress for c in self.components.values()) > before
             future = any(c.next_event() is not None for c in self.components.values())
+            # 无本地进展、无未来服务事件、无在途消息，才判为无法自行恢复的停滞。
             if not progress and not future and not self.clock.pending:
                 raise ModelError('Deadlock at cycle ' + str(self.cycle) + ': ' +
                                  json.dumps(self.snapshot(), sort_keys=True))

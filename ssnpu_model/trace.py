@@ -51,6 +51,7 @@ class TraceAdapter:
                     raise ModelError(f'Non-contiguous sequence: {r["op_id"]}')
                 if r.get('order_dependencies', []) != ([] if previous is None else [previous]):
                     raise ModelError(f'Unsupported order_dependencies contract at {r["op_id"]}')
+                # order_dependencies 只校验线程原始顺序，不加入 deps；否则独立 tile 指令也会串行。
                 previous = r['op_id']
                 r['_identity'] = identity
                 self.add(Instruction(r['op_id'], core, pe, r['task_id'], r['block_id'],
@@ -85,6 +86,8 @@ class TraceAdapter:
         self.instructions[i.id] = i
 
     def _versions(self, real):
+        # 先把 view 解析到同一存储版本，再建立生产者、全部消费者及固定位置覆写约束。
+        # 这些是静态元数据；运行时的 allocated/ready/释放状态由 TileReg 独立维护。
         aliases = {}
         for i in real:
             if i.alias:
@@ -135,6 +138,7 @@ class TraceAdapter:
                 i.inputs.add(key)
                 i.operands.append((o, key))
                 i.deps.add(v.producer)
+                # 登记所有未来读者，避免当前无人读取时就提前释放共享版本。
                 v.consumers.add(i.id)
             for use in i.raw.get('ssnpu', {}).get('shared_inputs', []):
                 uses[(use['use_id'], use['operand'])].append((i, use))
@@ -149,6 +153,7 @@ class TraceAdapter:
                 raise ModelError(f'Invalid shared-use version: {group}')
             version_uses[key].append(entries)
             if first['retention'] == 'last-use':
+                # last-use 允许回收；运行时仍须等待该版本的全部消费者，而非仅最后一组。
                 terminal_uses[key].append(entries)
                 self.versions[key].retained = False
             elif first['retention'] != 'reuse':
@@ -191,6 +196,8 @@ class TraceAdapter:
                 writer.deps.update(({old.producer} | old.consumers) - {writer.id})
 
     def _barriers(self, events, instances, real):
+        # 把多线程同一轮 barrier 合并为一个控制节点，交给 Sync 执行。
+        # 前序 tile → barrier → 后续阶段；barrier 间也连边，空阶段不会丢失同步约束。
         groups = defaultdict(list)
         for e in events:
             if e['kind'] == 'ssnpu.barrier':
@@ -226,6 +233,7 @@ class TraceAdapter:
                     i.sync.add(f'barrier:{task}:{block}:{phase-1}')
 
     def _tasks(self, real):
+        # 每个 task 增加完成节点；跨 task 依赖最终由跨 Core 的 ROB Completed 广播唤醒。
         task_ids = {t['task_id'] for t in self.tasks}
         if any(i.task not in task_ids for i in real):
             raise ModelError('Instruction references missing task')

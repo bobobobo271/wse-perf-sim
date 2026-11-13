@@ -69,6 +69,12 @@ def audit(report, trace):
     resources = defaultdict(list)
     for key, r in rows.items():
         i = trace.instructions[key]
+        if not i.control:
+            assert r['admitted'] + 1 == r['admission_received'] <= r['issue']
+            if not i.alias:
+                assert r['admission_received'] <= r['allocation_request']
+        else:
+            assert 'admitted' not in r and 'admission_received' not in r
         assert all(rows[d]['complete'] + 2 <= r['issue'] for d in i.deps | i.sync)
         assert r['complete'] >= r['issue']
         assert r['complete'] + 1 == r['rob_complete'] <= r['retire'] <= report['total_cycles']
@@ -138,6 +144,24 @@ def audit(report, trace):
     for thread in threads.values():
         ordered = sorted(thread, key=lambda i: i.age)
         assert all(rows[a.id]['retire'] <= rows[b.id]['retire'] for a, b in zip(ordered, ordered[1:]))
+        assert all(rows[a.id]['admitted'] <= rows[b.id]['admitted'] for a, b in zip(ordered, ordered[1:]))
+        changes, admissions = Counter(), Counter()
+        for i in ordered:
+            changes[rows[i.id]['admitted']] += 1
+            admissions[rows[i.id]['admitted']] += 1
+            changes[rows[i.id]['retire']] -= 1
+        occupancy = peak = full_cycles = admitted = 0
+        depth = c.get('rob_depth', {}).get('value')
+        cycles = sorted(changes)
+        for index, cycle in enumerate(cycles):
+            occupancy += changes[cycle]
+            admitted += admissions[cycle]
+            peak = max(peak, occupancy)
+            assert occupancy >= 0 and (depth is None or occupancy <= depth)
+            if depth is not None and occupancy == depth and admitted < len(ordered):
+                full_cycles += cycles[index+1] - cycle
+        expected = dict(capacity=depth, occupancy=0, peak=peak, full_cycles=full_cycles)
+        assert report['rob_windows'][f'core:{ordered[0].core}/rob'][str(ordered[0].raw['_identity'])] == expected
 
 
 class ModelTestCase(unittest.TestCase):
@@ -173,29 +197,29 @@ class ModelTests(ModelTestCase):
         b = op(1)
         d = op(2, inputs=a['outputs'], name='tile.add')
         _, t = self.run_rows([a, b, d])
-        # Allocate 0->1->2, dispatch 2->3, compute [3,4)+2, write 6->7->8.
-        self.assertEqual([t[k]['issue'] for k in (0, 1, 2)], [2, 2, 12])
-        self.assertEqual([t[k]['compute_start'] for k in (0, 1, 2)], [3, 4, 15])
-        self.assertEqual(t[2]['complete'], 20)
+        # Admit 0->1, allocate 1->2->3, dispatch 3->4, compute [4,5)+2, write 7->8->9.
+        self.assertEqual([t[k]['issue'] for k in (0, 1, 2)], [3, 3, 13])
+        self.assertEqual([t[k]['compute_start'] for k in (0, 1, 2)], [4, 5, 16])
+        self.assertEqual(t[2]['complete'], 21)
 
     def test_ooo_bypass(self):
         slow = op(0, outputs=[tile(0, 0, (1, 40))])
         blocked = op(1, inputs=slow['outputs'], name='tile.exp')
         ready = op(2)
         _, t = self.run_rows([slow, blocked, ready])
-        self.assertEqual(t[2]['issue'], 2)
-        self.assertEqual(t[2]['compute_start'], 13)
-        self.assertEqual(t[1]['issue'], 21)
+        self.assertEqual(t[2]['issue'], 3)
+        self.assertEqual(t[2]['compute_start'], 14)
+        self.assertEqual(t[1]['issue'], 22)
 
     def test_width_and_determinism(self):
         rows = [op(p, pe=p) for p in range(4)]
         self.c['parameters']['core_issue_width']['value'] = 2
         r, t = self.run_rows(rows)
-        self.assertEqual([t[p]['issue'] for p in range(4)], [3, 3, 2, 2])
+        self.assertEqual([t[p]['issue'] for p in range(4)], [3, 4, 4, 3])
         self.assertEqual(r, simulate(self.path, self.c))
         self.c['parameters']['core_issue_width']['value'] = 4
         _, t = self.run_rows(rows)
-        self.assertTrue(all(t[p]['issue'] == 2 for p in range(4)))
+        self.assertTrue(all(t[p]['issue'] == 3 for p in range(4)))
 
     def test_per_pe_issue_width_with_two_engines(self):
         tensor = dict(object_id=99, storage_id=99, version=0, producer=None,
@@ -204,10 +228,10 @@ class ModelTests(ModelTestCase):
         load['memory_accesses'] = [dict(object_id=99, shape=[1, 4])]
         self.c['parameters']['pe_issue_width']['value'] = 1
         _, t = self.run_rows([op(0), load])
-        self.assertEqual(t[1]['issue'], 3)
+        self.assertEqual(t[1]['issue'], 4)
         self.c['parameters']['pe_issue_width']['value'] = 2
         _, t = self.run_rows([op(0), load])
-        self.assertEqual(t[1]['issue'], 2)
+        self.assertEqual(t[1]['issue'], 3)
 
     def test_shared_memory_contention_and_four_pe_compute(self):
         rows = []
@@ -218,9 +242,9 @@ class ModelTests(ModelTestCase):
             load['memory_accesses'] = [dict(object_id=90, shape=[1, 4])]
             rows.extend([op(p, pe=p), load])
         _, t = self.run_rows(rows)
-        self.assertEqual(sorted(t[10+p]['issue'] for p in range(4)), [3, 3, 3, 3])
-        self.assertEqual(sorted(t[10+p]['compute_start'] for p in range(4)), [4, 8, 12, 16])
-        self.assertEqual({t[p]['issue'] for p in range(4)}, {2})
+        self.assertEqual(sorted(t[10+p]['issue'] for p in range(4)), [4, 4, 4, 4])
+        self.assertEqual(sorted(t[10+p]['compute_start'] for p in range(4)), [5, 9, 13, 17])
+        self.assertEqual({t[p]['issue'] for p in range(4)}, {3})
 
     def test_shared_last_use_and_reuse_liveout(self):
         rows = self.shared_rows()
@@ -248,7 +272,7 @@ class ModelTests(ModelTestCase):
     def test_capacity_wait_and_recovery(self):
         self.c['parameters']['local_capacity']['value'] = 16
         r, t = self.run_rows([op(0), op(1)])
-        self.assertEqual(t[1]['issue'], 10)
+        self.assertEqual(t[1]['issue'], 11)
         self.assertTrue(any('capacity:' in reason for reason in r['wait_reason_sets']['1']))
 
     def test_fixed_overwrite_waits_readers_and_allows_inplace(self):
@@ -264,8 +288,8 @@ class ModelTests(ModelTestCase):
     def test_empty_phases_and_tail_barrier(self):
         self.c['parameters']['barrier_latency']['value'] = 2
         r, t = self.run_rows([op(0), op(1, phase=2)], barriers=[0, 1, 2], threads=[0, 1, 2, 3])
-        self.assertEqual(t[1]['issue'], 20)
-        self.assertEqual(r['total_cycles'], 34)
+        self.assertEqual(t[1]['issue'], 21)
+        self.assertEqual(r['total_cycles'], 35)
         r, _ = self.run_rows([], barriers=[0, 1], threads=[0, 1, 2, 3])
         self.assertEqual(r['total_cycles'], 10)
 
@@ -309,7 +333,7 @@ class ModelTests(ModelTestCase):
     def test_dtype_and_zero_service_work(self):
         self.c['engines']['vector']['dtype_overrides']['float32'] = dict(throughput=1, latency=0)
         _, t = self.run_rows([op(0)])
-        self.assertEqual(t[0]['complete'], 9)
+        self.assertEqual(t[0]['complete'], 10)
         self.c['engines']['vector']['dtype_overrides']['float32']['throughput'] = 0
         with self.assertRaisesRegex(ModelError, 'throughput'):
             simulate(self.path, self.c)
@@ -361,7 +385,7 @@ class AdditionalTests(ModelTestCase):
                    outputs=[tile(10*p+2, 10*p+2, (2, 5))], name='tile.matmul')
             rows.extend([a, b, c])
         _, t = self.run_rows(rows)
-        self.assertEqual({t[p*10+2]['issue'] for p in range(4)}, {17})
+        self.assertEqual({t[p*10+2]['issue'] for p in range(4)}, {18})
         self.assertEqual({t[p*10+2]['stages'][0]['work'] for p in range(4)}, {30})
 
     def test_memory_path_override(self):
@@ -372,7 +396,7 @@ class AdditionalTests(ModelTestCase):
         self.c['paths']['L2'] = dict(engine='memory', throughput=8, latency=3)
         _, t = self.run_rows([load])
         self.assertEqual(t[0]['compute_end'] - t[0]['compute_start'], 5)
-        self.assertEqual(t[0]['complete'], 10)
+        self.assertEqual(t[0]['complete'], 11)
 
     def test_tlsu_multiple_ranges_and_path_overrides_dtype(self):
         tensors = [dict(object_id=oid, storage_id=oid, version=0, producer=None,
@@ -384,8 +408,8 @@ class AdditionalTests(ModelTestCase):
         self.c['paths']['L2'] = dict(engine='memory', throughput=8, latency=1)
         report, t = self.run_rows([load])
         self.assertEqual([(s['work'], s['start'], s['service_end'], s['complete']) for s in t[0]['stages']],
-                         [(8, 3, 11, 20), (16, 20, 22, 23)])
-        self.assertEqual(t[0]['complete'], 25)
+                         [(8, 4, 12, 21), (16, 21, 23, 24)])
+        self.assertEqual(t[0]['complete'], 26)
         self.assertEqual(report['resources']['core:0/memory']['bytes'], 24)
 
     def test_tlsu_rejects_missing_or_unresolved_memory_ranges(self):

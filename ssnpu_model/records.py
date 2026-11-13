@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Instruction:
+    """只读使用的指令元数据；动态执行状态存放在各组件中。
+
+    deps/sync 是必须完成的前驱；age 用于仲裁/退休，不自动生成相邻指令完成依赖。
+    inputs/outputs 是去重后的存储版本集合，operands 保留实际操作数的访问顺序。
+    """
     id: object
     core: int
     pe: int
@@ -24,6 +29,10 @@ class Instruction:
 
 @dataclass
 class Version:
+    """逻辑版本与存储身份：pool 决定容量域，slot 决定是否与旧版本争用固定位置。
+
+    consumers 包含完整 trace 的消费者；retained 为真时消费结束仍保留载荷。
+    """
     key: tuple
     obj: dict
     producer: object
