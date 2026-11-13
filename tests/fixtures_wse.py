@@ -1,15 +1,7 @@
-"""Generate a synthetic capture v2 + explicit Calendar plan under workspace/.
-
-40 active cores, PE 0 per core: produce/load D bytes, row+column AllGather,
-then a local vector consumer of the 40D-byte result. This is not a PyPTO export;
-it exercises the same capture importer. Archived PyPTO examples are unchanged.
-"""
-import argparse
+"""Synthetic records for the isolated 40-node Calendar test."""
 import json
 from pathlib import Path
 
-from api import simulate
-from config import wse_config
 from frontend.communication import allgather_40
 
 
@@ -22,7 +14,7 @@ def tile(name, size, shared=True, producer=None):
     return obj
 
 
-def make_capture(directory, shard_bytes=256, *, sram=False):
+def make_capture(directory, shard_bytes=256):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     sources = {c: tile(f'source:{c}', shard_bytes, producer=f'produce:{c}') for c in range(40)}
@@ -36,11 +28,6 @@ def make_capture(directory, shard_bytes=256, *, sram=False):
                       ssnpu=dict(phase=0, participants=[core], shared_inputs=[]))
         first = dict(common, op_id=owners[core], ir_op='tile.full', inputs=[], outputs=[sources[core]],
                      instance_op_sequence=0, order_dependencies=[])
-        if sram:
-            memory = dict(object_id=f'memory:{core}', kind='tensor', shape=[1, shard_bytes],
-                          dtype='uint8', memory_space='SRAM')
-            first.update(ir_op='tile.load', inputs=[memory],
-                         memory_accesses=[dict(object_id=memory['object_id'], shape=[1, shard_bytes], offset_bytes=0)])
         second = dict(common, op_id=f'consume:{core}', ir_op='tile.adds', inputs=[columns[core]],
                       outputs=[tile(f'result:{core}', 40 * shard_bytes, False, f'consume:{core}')],
                       instance_op_sequence=1, order_dependencies=[owners[core]])
@@ -56,21 +43,3 @@ def make_capture(directory, shard_bytes=256, *, sram=False):
     plan = allgather_40(sources, rows, columns, owners, shard_bytes)
     (directory / 'communication.json').write_text(json.dumps(plan, indent=2) + '\n')
     return plan
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-dir', default='workspace/wse40')
-    parser.add_argument('--shard-bytes', type=int, default=256)
-    parser.add_argument('--sram', action='store_true')
-    args = parser.parse_args()
-    output = Path(args.output_dir)
-    plan = make_capture(output / 'capture', args.shard_bytes, sram=args.sram)
-    report = simulate(output / 'capture', wse_config(), communication_plan=plan)
-    (output / 'report.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
-    print(json.dumps(dict(total_cycles=report['total_cycles'], total_time_ns=report['total_time_ns'],
-                         instructions=report['instruction_count'], phases=report['noc']['phases'])))
-
-
-if __name__ == '__main__':
-    main()

@@ -1,133 +1,77 @@
-"""Decode validation conditions live with each test; generated artifacts use workspace/."""
+"""Exercise PTO replay and HBM timing independently of a kernel generator."""
 import copy
-import tempfile
+import io
+import json
 import unittest
-from dataclasses import replace
+from contextlib import redirect_stdout
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from api import simulate, ModelError
-from workloads.decode import DecodeSpec, make_decode_capture
-from frontend.capture import TraceAdapter
-from simulator import Simulator
-
-WORK = Path(__file__).resolve().parents[1] / 'workspace/decode-tests'
+from api import ModelError, simulate
+from config import default_config, wse_config
+from examples.decode.run import main
+from test_model import ROOT, fixture, op, simulate as simulate_fixture
 
 
-class DecodeTimingTests(unittest.TestCase):
+class DecodeReplayTests(unittest.TestCase):
     def setUp(self):
-        WORK.mkdir(parents=True, exist_ok=True)
-        self.tmp = tempfile.TemporaryDirectory(dir=WORK)
-        self.addCleanup(self.tmp.cleanup)
-        self.path = Path(self.tmp.name)
-        self.spec = DecodeSpec(query_heads=4, kv_heads=1, head_dim=8, sequence_length=19,
-                               sequence_splits=3, tile_tokens=4, hbm_chunk_tokens=8)
+        workspace = ROOT / 'workspace'
+        workspace.mkdir(exist_ok=True)
+        tmp = TemporaryDirectory(dir=workspace)
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name)
 
-    def build(self, spec=None, name='capture'):
-        path = self.path / name
-        config, plan, layout = make_decode_capture(path, spec or self.spec)
-        return path, config, plan, layout
+    def test_replay_archived_pypto_fa_without_generating_a_capture(self):
+        capture = ROOT / 'examples/fa/capture'
+        config = default_config()
+        config['wse'] = wse_config()['wse']
+        config_path = self.path / 'config.json'
+        config_path.write_text(json.dumps(config))
+        output = self.path / 'replay'
+        with redirect_stdout(io.StringIO()):
+            main([str(capture), '--config', str(config_path), '--no-plots', '--output-dir', str(output)])
+        report = json.loads((output / 'report.json').read_text())
+        self.assertEqual(report['instruction_count'], 320)
+        self.assertEqual(report['total_cycles'], 2183)
+        self.assertEqual(report['source_sha256'], simulate(capture)['source_sha256'])
+        self.assertTrue((output / 'pipeline.pftrace').stat().st_size)
+        self.assertFalse((output / 'capture').exists())
 
-    def test_bytes_completion_and_single_output_owner(self):
-        s = self.spec
-        path, config, plan, layout = self.build()
-        report = simulate(path, config, communication_plan=plan)
-        # Cold FP16 K/V read once; Q explicitly replicated from HBM to each
-        # sequence worker; one FP32 output per head written back to HBM.
-        expected = 4*s.batch*s.kv_heads*s.sequence_length*s.head_dim
-        expected += 2*s.batch*s.query_heads*s.head_dim*s.sequence_splits
-        expected += 4*s.batch*s.query_heads*s.head_dim
-        self.assertEqual(sum(e['bytes'] for e in report['hbm_events']), expected)
-        self.assertEqual(report['resources']['chip/hbm']['bytes'], expected)
-        self.assertEqual(sum(e['direction'] == 'write' for e in report['hbm_events']), s.batch*s.kv_heads)
-        state_bytes = 4*s.query_heads*(s.head_dim+2)
-        phase = report['noc']['phases']['split_kv:0']
-        self.assertEqual(phase['status'], 'done')
-        self.assertEqual(set(phase['remote_committed_bytes'].values()), {state_bytes*(s.sequence_splits-1)})
-        self.assertEqual(sum(m['end']-m['start'] for m in layout['mapping']), s.sequence_length)
+    def test_public_replay_rejects_synthetic_records(self):
+        path = fixture(self.path / 'synthetic', [op(0)])
+        with self.assertRaisesRegex(ModelError, 'Expected a PyPTO workload capture'):
+            simulate(path)
 
-    def test_hbm_is_one_global_serial_server_and_bandwidth_is_parameterized(self):
-        # Same capture, clocks, SRAM, compute and routes; only chip HBM BW varies.
-        path, config, plan, _ = self.build()
-        fast = simulate(path, config, communication_plan=plan)
+    def test_hbm_arbitration_and_bandwidth(self):
+        # Two cores each copy 128 FP16 elements from HBM to local SRAM.
+        # The only variable between simulations is the configured chip bandwidth.
+        rows = []
+        for core in range(2):
+            source = dict(object_id=f'src{core}', kind='tensor', shape=[1, 128],
+                          dtype='float16', memory_space='HBM')
+            target = dict(source, object_id=f'dst{core}', memory_space='SRAM')
+            row = op(core, pe=core, inputs=[source], outputs=[target], name='memory.copy')
+            row['memory_accesses'] = [dict(object_id=obj['object_id'], shape=obj['shape'])
+                                      for obj in (source, target)]
+            rows.append(row)
+        capture = fixture(self.path / 'hbm', rows)
+        manifest_path = capture / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        for instance in manifest['instances']:
+            instance['mapping'] = dict(core_id=instance['thread_id'], pe_id=0)
+        manifest_path.write_text(json.dumps(manifest))
+        config = wse_config()
+        config['hbm'] = dict(bandwidth_bytes_per_second=256e9, startup_ns=0)
+        fast = simulate_fixture(capture, config)
         slow_config = copy.deepcopy(config)
         slow_config['hbm']['bandwidth_bytes_per_second'] = 1e9
-        slow = simulate(path, slow_config, communication_plan=plan)
-        events = sorted(slow['hbm_events'], key=lambda e: e['start_cycle'])
-        self.assertTrue(all(a['end_cycle'] <= b['start_cycle'] for a, b in zip(events, events[1:])))
-        self.assertGreater(slow['resources']['chip/hbm']['service_cycles'], fast['resources']['chip/hbm']['service_cycles'])
+        slow = simulate_fixture(capture, slow_config)
+        for report in (fast, slow):
+            first, second = report['hbm_events']
+            self.assertLessEqual(first['end_cycle'], second['start_cycle'])
+            self.assertEqual(report['resources']['chip/hbm']['bytes'], 512)
+            for row in report['timeline']:
+                if row['ir_op'] == 'memory.copy':
+                    hbm, sram = row['stages']
+                    self.assertLess(hbm['service_end'], sram['start'])
         self.assertGreater(slow['total_cycles'], fast['total_cycles'])
-        self.assertEqual(slow['resources']['chip/hbm']['bytes'], fast['resources']['chip/hbm']['bytes'])
-
-    def test_tick_order_does_not_change_hbm_arbitration(self):
-        path, config, plan, _ = self.build()
-        a = Simulator(TraceAdapter(path, config, plan), config)
-        b = Simulator(TraceAdapter(path, config, plan), config)
-        b.tick_order.reverse()
-        self.assertEqual(a.run(), b.run())
-
-    def test_memory_stages_and_pipeline_export_use_report_times(self):
-        from analysis.pipeline import service_intervals, export_resource_trace
-        from analysis.perfetto import to_pftrace
-        from collections import defaultdict
-        import json
-        path, config, plan, _ = self.build()
-        trace = TraceAdapter(path, config, plan)
-        report = Simulator(trace, config).run()
-        # Check all scheduler dependencies and all resource occupancy intervals,
-        # including HBM endpoint writes contending with ordinary SRAM reads.
-        timeline = {row['op_id']: row for row in report['timeline']}
-        services = defaultdict(list)
-        for key, instruction in trace.instructions.items():
-            row = timeline[key]
-            self.assertTrue(all(timeline[dep]['complete']+2 <= row['issue'] for dep in instruction.deps | instruction.sync))
-            for stage in row['stages']:
-                services[stage['resource']].append((stage['start'], stage['service_end']))
-        for resource, spans in services.items():
-            spans.sort()
-            self.assertTrue(all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), resource)
-        for pool, peak in report['storage_peak_bytes'].items():
-            self.assertLessEqual(peak, config['parameters']['shared_capacity' if pool.endswith('/shared') else 'local_capacity']['value'])
-        intervals = service_intervals(report)
-        self.assertTrue({'HBM', 'SRAM', 'Cube', 'Vector', 'Calendar'} <= {i['kind'] for i in intervals})
-        hbm = [event for event in intervals if event['kind'] == 'HBM']
-        self.assertAlmostEqual(sum(i['end_us']-i['start_us'] for i in hbm),
-            report['resources']['chip/hbm']['service_cycles']*1e6/config['wse']['core_clock_hz']['value'])
-        export_resource_trace(report, self.path)
-        data = json.loads((self.path/'resources.trace.json').read_text())
-        self.assertEqual(sum(e['ph'] == 'X' for e in data['traceEvents']), len(intervals))
-        self.assertTrue(to_pftrace(report['instruction_events'], cycle_ns=1e9/config['wse']['core_clock_hz']['value']))
-
-    def test_double_buffer_reuse_waits_for_readers(self):
-        # Five HBM chunks require repeated reuse of both SRAM slots. Increase
-        # compute relative to HBM so premature overwrite would be exposed.
-        spec = replace(self.spec, sequence_length=41, sequence_splits=1)
-        path, config, plan, _ = self.build(spec)
-        config['engines']['cube']['throughput'] = 64
-        trace = TraceAdapter(path, config, plan)
-        report = Simulator(trace, config).run()
-        rows = {r['op_id']: r for r in report['timeline']}
-        reused = 0
-        for instruction in trace.instructions.values():
-            if instruction.raw['ir_op'] == 'memory.copy' and instruction.raw['dependencies']:
-                if instruction.raw['outputs'][0]['memory_space'] == 'SRAM':
-                    reused += 1
-                    self.assertTrue(all(rows[d]['complete'] < rows[instruction.id]['issue'] for d in instruction.raw['dependencies']))
-        self.assertGreaterEqual(reused, 4)
-
-    def test_empty_sequence_shards_and_waves(self):
-        # 21 KV heads * 2 splits exceeds 40 cores: wave 1 reuses wave 0 cores.
-        spec = replace(self.spec, query_heads=21, kv_heads=21, sequence_length=1, sequence_splits=2)
-        path, config, plan, layout = self.build(spec)
-        report = simulate(path, config, communication_plan=plan)
-        self.assertEqual({entry['wave'] for entry in layout['mapping']}, {0, 1})
-        self.assertTrue(all(phase['status'] == 'done' for phase in report['noc']['phases'].values()))
-
-    def test_invalid_dimensions_and_bandwidth(self):
-        for change in (dict(query_heads=5, kv_heads=2), dict(sequence_splits=41),
-                       dict(hbm_gbps=0), dict(hbm_gbps=float('nan')), dict(sequence_length=0)):
-            with self.assertRaises(ModelError):
-                self.build(replace(self.spec, **change))
-
-
-if __name__ == '__main__':
-    unittest.main()

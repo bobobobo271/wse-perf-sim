@@ -9,7 +9,7 @@ from errors import ModelError
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='WSE performance simulator (uncalibrated)')
-    parser.add_argument('capture_dir')
+    parser.add_argument('capture_dir', help='PyPTO workload capture directory')
     parser.add_argument('--config')
     parser.add_argument('--communication-plan', help='Explicit WSE Calendar capture bindings')
     parser.add_argument('--output', required=True, help='JSON report destination (use workspace/)')

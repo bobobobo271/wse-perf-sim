@@ -11,11 +11,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from api import ModelError, simulate, wse_config
+from api import ModelError, wse_config
 from frontend.communication import allgather_group, multicast_routes, route_tree
 from simulator import Simulator
 from frontend.capture import TraceAdapter
-from test_model import fixture, op, tile
+from test_model import fixture, op, simulate, tile
 
 WORK = Path(__file__).resolve().parents[1] / 'workspace/calendar-integration/tests'
 

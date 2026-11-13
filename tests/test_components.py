@@ -5,7 +5,7 @@ import io
 from contextlib import redirect_stdout
 from collections import Counter
 
-from api import ModelError
+from api import ModelError, default_config, simulate
 from simulator import Simulator
 from runtime.clock import Clock
 from cli import main
@@ -15,7 +15,7 @@ from runtime.protocol import (
     Access, AccessDone, Admitted, Allocate, Allocated, Complete, Completed, Consumed, Dispatch, Issued,
 )
 from frontend.capture import TraceAdapter
-from test_model import ModelTestCase, audit, fixture, op, tile
+from test_model import ROOT, ModelTestCase, audit, fixture, op, tile
 
 
 class Echo(Component):
@@ -306,11 +306,14 @@ class ProtocolTests(ModelTestCase):
                           e['event'] in ('issue', 'complete', 'rob_complete', 'retire')},
                          dict(issue=3, complete=9, rob_complete=10, retire=10))
         config, output, log = (self.path / name for name in ('config.json', 'report.json', 'events.jsonl'))
-        config.write_text(json.dumps(self.c))
+        capture = ROOT / 'examples' / 'fa' / 'capture'
+        pto_config = default_config()
+        config.write_text(json.dumps(pto_config))
+        pto_events = simulate(capture, pto_config)['instruction_events']
         with redirect_stdout(io.StringIO()):
-            main([str(self.path), '--config', str(config), '--output', str(output), '--event-log', str(log)])
-        self.assertEqual([json.loads(line) for line in log.read_text().splitlines()], events)
-        self.assertEqual(json.loads(output.read_text())['instruction_events'], events)
+            main([str(capture), '--config', str(config), '--output', str(output), '--event-log', str(log)])
+        self.assertEqual([json.loads(line) for line in log.read_text().splitlines()], pto_events)
+        self.assertEqual(json.loads(output.read_text())['instruction_events'], pto_events)
 
     def test_deadlock_identifies_component_capacity_and_unfinished_entries(self):
         self.c['parameters']['local_capacity']['value'] = 1

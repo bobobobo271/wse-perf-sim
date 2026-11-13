@@ -7,7 +7,7 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from api import ModelError, simulate, default_config
+from api import ModelError, simulate as replay_pto, default_config
 from config import wse_config, validate_config
 from frontend.communication import route_bitmap, route_tree, operation_id
 from simulator import Simulator
@@ -15,8 +15,8 @@ from frontend.capture import TraceAdapter
 from tiles import version_key
 from runtime.protocol import (ReceivePrepare, PortFence, WriteReservations,
     RouterWrite, PublishReceive, Access)
-from examples.wse_allgather import make_capture
-from test_model import fixture, op, tile
+from fixtures_wse import make_capture
+from test_model import fixture, op, simulate, tile
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'workspace/noc-tests'
@@ -329,7 +329,7 @@ class FullWseTests(unittest.TestCase):
                     for core, v in latest.items()]
                 plan = dict(schema='wse-communication/1', non_speculative=True,
                             phases=[dict(name='archive', opcode=1, epoch=0, nodes=entries)])
-                report = simulate(capture, config, communication_plan=plan)
+                report = replay_pto(capture, config, communication_plan=plan)
                 self.assertEqual(report['noc']['phases']['archive']['remote_committed_bytes'], {0: 256, 1: 256})
                 self.assertEqual(report['instruction_count'], sum(not i.control for i in original.instructions.values()) + 4)
 

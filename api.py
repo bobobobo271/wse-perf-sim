@@ -10,7 +10,7 @@ from errors import ModelError
 
 
 def simulate(capture_dir, config=None, *, communication_plan=None):
-    """Simulate a capture directory and return a JSON-serializable report."""
+    """Replay a PyPTO capture directory and return a JSON-serializable report."""
     from simulator import Simulator
     from frontend.capture import TraceAdapter
 
@@ -20,6 +20,7 @@ def simulate(capture_dir, config=None, *, communication_plan=None):
         config = json.loads(Path(config).read_text())
     config = validate_config(copy.deepcopy(config))
     try:
-        return Simulator(TraceAdapter(capture_dir, config, communication_plan), config).run()
+        trace = TraceAdapter(capture_dir, config, communication_plan, require_pto=True)
+        return Simulator(trace, config).run()
     except (KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         raise ModelError(f'Invalid capture: {exc}') from exc

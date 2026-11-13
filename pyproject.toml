@@ -21,5 +21,5 @@ wse-perf-trace = "analysis.perfetto:main"
 py-modules = ["api", "cli", "config", "errors", "records", "simulator", "tiles"]
 
 [tool.setuptools.packages.find]
-include = ["models*", "runtime*", "frontend*", "workloads*", "analysis*"]
+include = ["models*", "runtime*", "frontend*", "analysis*"]
 namespaces = false

@@ -1,6 +1,6 @@
 # 目录重构验证
 
-本文记录历史目录重构验证。当前 Decode 示例的运行方式见 [Decode 示例](../examples/decode/README.md)。
+本文记录历史目录重构验证。下方命令对应当时的代码版本。当前的 PTO capture 回放命令见 [Decode 示例](../examples/decode/README.md)。
 
 ## 后续调整：去掉包目录和旧入口
 

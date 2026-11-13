@@ -34,7 +34,7 @@
 
 数据命令依次包括 `prepare`、`read`、`fence`、`reserve`、`write`、`publish`：登记预期接收段、读取源包、取得端口可用时间、预约写服务、写入分段、发布完整目标。对应回复为 `posted`、`source_ready`、`port_ready`、`reserved`、`written`、`published`；数据错误统一回复 `fault`。
 
-`write` 的明细为 `(source_node, destination_offset, nbytes, payload)`。独立驱动携带真实 bytes；性能核模型的 payload 为 `None`，只模拟字节范围、端口和时序。FA 示例按张量形状生成 capture 和通信计划。
+`write` 的明细为 `(source_node, destination_offset, nbytes, payload)`。独立驱动携带真实 bytes；性能核模型的 payload 为 `None`，只模拟字节范围、端口和时序。FA 的核指令来自 PTO capture，通信计划绑定其中的指令和 Tile 版本。
 
 ## 接纳、寿命与完成
 

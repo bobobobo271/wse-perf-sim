@@ -42,8 +42,6 @@ wse-perf-sim/
 ├── frontend/
 │   ├── capture.py             capture 解析、映射和校验
 │   └── communication.py       显式通信计划与 Tile 版本绑定
-├── workloads/
-│   └── decode.py              Decode 负载生成
 ├── analysis/
 │   ├── report.py              只读汇总仿真状态和事件
 │   ├── perfetto.py            原生 Perfetto / JSON 时间线导出
@@ -68,18 +66,15 @@ wse-perf-sim/
 
 `frontend` 负责把外部数据变成仿真输入。`capture.py` 解析 PyPTO capture；`communication.py` 将显式通信计划绑定到 capture 中的 Tile 版本，插入 `comm.submit` 和 `comm.wait`，再调用 NoC 编译器生成路由和时隙。NoC 模型不反向读取 capture。
 
-`workloads` 产生测试和分析所需的负载。Decode 生成器根据张量形状描述算法分块与任务映射，硬件模型据此调度并计时。
-
 `analysis` 读取仿真结果。`report.py` 需要识别组件以汇总统计，因此允许它依赖模型；硬件模型不依赖分析层。`perfetto.py` 将打点转换为时间线格式，`pipeline.py` 绘制资源占用图，Matplotlib 只在实际绘图时导入。
 
 `simulator.py` 是整机装配入口，可以同时引用输入记录、核、NoC、HBM、时钟和报告。保留 `Simulator.run()` 返回报告的现有行为，报告的具体实现放在 `analysis`。这样无需为本次目录调整修改已有的调用协议。
 
 ```mermaid
 flowchart TD
-    Entry[API / CLI / 示例] --> Workloads[workloads 负载生成]
+    PTO[PyPTO workload capture] --> Frontend[frontend 输入适配]
     Entry --> Frontend[frontend 输入适配]
     Entry --> Sim[simulator 整机装配]
-    Workloads --> Frontend
     Frontend --> Compiler[models/noc 路由与时隙编译]
     Sim --> Core[models/ssnpu 核]
     Sim --> NoC[models/noc 网络执行]
@@ -108,7 +103,6 @@ flowchart TD
 | `communication/` | `models/noc/` |
 | `trace.py` | `frontend/capture.py` |
 | `noc_plan.py` | `frontend/communication.py` |
-| `decode.py` | `workloads/decode.py` |
 | `report.py`、`perfetto.py` | `analysis/report.py`、`analysis/perfetto.py` |
 | `decode_plot.py` | `analysis/pipeline.py` |
 | `api.py`、`simulator.py`、`config.py` 等顶层模块 | 仓库根目录下的同名模块 |
@@ -129,7 +123,7 @@ from analysis.perfetto import to_pftrace
 
 - 改时序、资源竞争、端口和生命周期，放到对应 `models` 模块。
 - 支持新的 capture 格式或通信绑定，放到 `frontend`。
-- 增加算子、分块方式或数值参考，放到 `workloads`，演示入口放到 `examples`。
+- 新算子的分块和任务映射在 PTO 侧定义，回放示例放到 `examples`。
 - 增加报告字段、图表或导出格式，放到 `analysis`。
 - 比较外部模型、实测数据或拟合参数，放到 `benchmarks`。
 

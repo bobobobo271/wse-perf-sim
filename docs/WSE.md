@@ -9,12 +9,10 @@
 要求 Python 3.11+，仅标准库。以下命令在仓库根目录运行，产物写入 `workspace/`：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --output-dir workspace/wse40
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S examples/wse_allgather.py --sram --output-dir workspace/wse40-sram
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m cli \
-  workspace/wse40/capture --config config/wse40.json \
-  --communication-plan workspace/wse40/capture/communication.json \
-  --output workspace/wse40/cli-report.json --event-log workspace/wse40/instructions.jsonl
+  workspace/pto-capture --config config/wse40.json \
+  --communication-plan workspace/pto-communication.json \
+  --output workspace/pto-report.json --event-log workspace/pto-instructions.jsonl
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -S -m unittest discover -s tests -v
 ```
 
@@ -25,7 +23,7 @@ from api import simulate, wse_config
 report = simulate(capture_dir, wse_config(), communication_plan=plan_path_or_dict)
 ```
 
-传通信计划且省略配置时，使用 `wse_config()`；原调用不传计划时仍使用原逻辑验证配置。`examples/wse_allgather.py` 生成合成 capture v2 和通信计划，用来测试导入、调度和通信，并非 PyPTO 编译产物。原仓 matmul、FA、ooo 的 PyPTO capture 和归档结果保留原样。
+传通信计划且省略配置时，使用 `wse_config()`；原调用不传计划时仍使用原逻辑验证配置。上面的 capture 和通信计划路径需要替换为实际 PTO 导出文件。仓库附带可直接回放的 [PyPTO FA 示例](../examples/fa/README.md)。
 
 ## 参数及范围
 
@@ -98,7 +96,7 @@ Shared→NoC→Shared 不访问 SRAM。`total_cycles` 包括核内退休、消�
 
 `owner` 的数据输出不是隐式控制依赖；源版本自动建立数据依赖，额外顺序由 `after` 明确表达。插入操作继承 owner 的 barrier 阶段，已有 barrier 的完成集合也加入这些操作。各阶段依次收束；同 opcode 的 epoch 逐轮递增并按配置位宽回绕。
 
-目标对象的消费者在 capture 输入中引用同一版本；导入器将其 producer 绑定到接收完成操作。计划不能覆盖已有 capture 输出的生产者。目标必须被本地和远端分段恰好覆盖，无空洞、重叠或越界。`routeBits` 的 P 节点诱导子图必须包含源、连通且无环。生成样例见 `workspace/wse40/capture/communication.json`。
+目标对象的消费者在 capture 输入中引用同一版本；导入器将其 producer 绑定到接收完成操作。计划不能覆盖已有 capture 输出的生产者。目标必须被本地和远端分段恰好覆盖，无空洞、重叠或越界。`routeBits` 的 P 节点诱导子图必须包含源、连通且无环。
 
 ## 自动规划
 

@@ -4,13 +4,13 @@ import json
 import pickle
 import random
 
-from api import ModelError, default_config, simulate
+from api import ModelError, default_config
 from simulator import Simulator
 from models.ssnpu import ROB
 from runtime.protocol import Admitted, Complete, Issued
 from config import validate_config
 from frontend.capture import TraceAdapter
-from test_model import ModelTestCase, audit, fixture, op, tile
+from test_model import ModelTestCase, audit, fixture, op, simulate, tile
 
 
 class WindowTests(ModelTestCase):
