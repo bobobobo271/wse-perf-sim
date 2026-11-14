@@ -1,10 +1,11 @@
 """Core tile load/store unit, including memory path work and latency."""
 import math
-from fractions import Fraction
 
 from errors import ModelError
 from tiles import nbytes
 from models.ssnpu.execution import ExecutionUnit
+from runtime.memory import (MemoryRequest, MemorySubmit, MemoryAccepted,
+    MemoryRejected, MemoryDone, MemoryRetired)
 from runtime.protocol import (core_name, Dispatch, Access, AccessDone, Complete, Consumed,
                        HBMRequest, HBMDone)
 
@@ -13,10 +14,14 @@ class TLSU(ExecutionUnit):
     def __init__(self, name, instructions, config):
         super().__init__(name, instructions, config)
         self.copy_jobs = {}
+        self.memory_jobs, self.memory_sequence = {}, 0
 
     def tick(self, cycle):
         ordinary = []
         for port, message in self.inputs(cycle):
+            if isinstance(message, (MemoryAccepted, MemoryRejected, MemoryDone)):
+                self.memory_reply(message, cycle)
+                continue
             i = self.nodes[message.instruction]
             if i.raw['ir_op'] == 'memory.copy':
                 self.copy_message(i, message, cycle)
@@ -27,23 +32,58 @@ class TLSU(ExecutionUnit):
         for key, job in list(self.copy_jobs.items()):
             i = self.nodes[key]
             if job['state'] == 'sram':
-                p = {k: v['value'] for k, v in self.config['wse'].items()}
                 direction = 'write' if job['direction'] == 'read' else 'read'
-                duration = math.ceil(p['core_clock_hz'] * (
-                    p[f'sram_{direction}_startup_ns'] / 1e9 + job['work'] / p['sram_bandwidth']))
-                event = self.service.start(core_name(i.core, 'memory'), 'memory', job['work'],
-                                           max(1, duration), 0, cycle)
-                if event is not None:
-                    if job['direction'] == 'write':
-                        self.observe(key, compute_start=cycle)
-                    self.observe(key, stage=event)
-                    job.update(state='sram_running', end=event['complete'])
-            elif job['state'] == 'sram_running' and job['end'] <= cycle:
+                self.submit_memory(i, direction, job['offset'], job['work'], i.core, copy=True)
+                if job['direction'] == 'write':
+                    self.observe(key, compute_start=cycle)
+                job['state'] = 'sram_wait'
+        for entry in self.memory_jobs.values():
+            if entry['state'] == 'retry' and entry['retry'] <= cycle:
+                self.send(entry['destination'], entry['message'])
+                entry['state'] = 'submitted'
+
+    def submit_memory(self, instruction, direction, offset, work, target, *, copy=False):
+        if type(target) is not int or not 0 <= target < 40:
+            raise ModelError('Target SRAM core must be an explicit WSE40 node')
+        key = (instruction.core, self.memory_sequence)
+        self.memory_sequence += 1
+        request = MemoryRequest(key, instruction.core, target, direction, offset, work)
+        destination = f'core:{target}/sram' if target == instruction.core else 'memory-network'
+        message = MemorySubmit(self.name, request)
+        self.memory_jobs[key] = dict(instruction=instruction.id, message=message, destination=destination,
+                                     state='submitted', copy=copy)
+        self.send(destination, message)
+
+    def memory_reply(self, message, cycle):
+        entry = self.memory_jobs.get(message.request_id)
+        if entry is None:
+            raise ModelError('Unknown or duplicate TLSU memory completion')
+        if isinstance(message, MemoryAccepted):
+            if entry['state'] != 'submitted':
+                raise ModelError('Duplicate memory acceptance')
+            entry['state'] = 'accepted'
+        elif isinstance(message, MemoryRejected):
+            if entry['state'] != 'submitted' or not message.retryable:
+                raise ModelError(f'Memory request rejected: {message.reason}')
+            entry.update(state='retry', retry=cycle+1)
+        else:
+            if entry['state'] != 'accepted' or message.status != 'success':
+                raise ModelError(f'Memory access failed: {message.error}')
+            self.send(entry['destination'], MemoryRetired(message.request_id))
+            key = entry['instruction']
+            for event in message.stages:
+                self.observe(key, stage=event)
+            if entry['copy']:
+                job = self.copy_jobs[key]
+                i = self.nodes[key]
                 if job['direction'] == 'write':
                     self.send('hbm', HBMRequest(key, i.core, job['work'], 'write', False))
                     job['state'] = 'hbm'
                 else:
                     self.finish_copy(i, cycle)
+            else:
+                self.commands[key].result = cycle
+            del self.memory_jobs[message.request_id]
 
     def copy_message(self, instruction, message, cycle):
         key = instruction.id
@@ -69,7 +109,10 @@ class TLSU(ExecutionUnit):
                 if obj['memory_space'] == 'SRAM' and offset + sizes[0] > self.config['wse']['sram_capacity_bytes']['value']:
                     raise ModelError('memory.copy exceeds SRAM capacity')
             direction = 'read' if spaces[0] == 'HBM' else 'write'
-            self.copy_jobs[key] = dict(direction=direction, work=sizes[0],
+            sram_access = accesses[1] if direction == 'read' else accesses[0]
+            if sram_access.get('target_core', instruction.core) != instruction.core:
+                raise ModelError('memory.copy uses local SRAM staging')
+            self.copy_jobs[key] = dict(direction=direction, work=sizes[0], offset=sram_access.get('offset_bytes', 0),
                                        state='hbm' if direction == 'read' else 'sram')
             self.observe(key, received=cycle, operands_ready=cycle, state='memory_copy')
             if direction == 'read':
@@ -90,14 +133,14 @@ class TLSU(ExecutionUnit):
         del self.copy_jobs[instruction.id]
 
     def is_idle(self):
-        return super().is_idle() and not self.copy_jobs
+        return super().is_idle() and not self.copy_jobs and not self.memory_jobs
 
     def next_event(self):
-        events = [super().next_event()] + [j.get('end') for j in self.copy_jobs.values() if j['state'] == 'sram_running']
+        events = [super().next_event()] + [j['retry'] for j in self.memory_jobs.values() if j['state'] == 'retry']
         return min((event for event in events if event is not None), default=None)
 
     def snapshot(self):
-        return dict(super().snapshot(), memory_copies=self.copy_jobs.copy())
+        return dict(super().snapshot(), memory_copies=self.copy_jobs.copy(), memory_requests={str(k): v['state'] for k, v in self.memory_jobs.items()})
 
     def operation_count(self, instruction):
         # 多段内存访问按 trace 顺序逐段执行，每段结果到期后再尝试下一段。
@@ -128,9 +171,8 @@ class TLSU(ExecutionUnit):
             if type(offset) is not int or offset < 0 or offset + work > p['sram_capacity_bytes']:
                 raise ModelError('Local SRAM access exceeds configured capacity')
             direction = 'write' if any(o['object_id'] == obj['object_id'] for o in r['outputs']) else 'read'
-            duration = Fraction(p[f'sram_{direction}_startup_ns'], 10**9) + Fraction(work, p['sram_bandwidth'])
-            service = max(1, math.ceil(duration * p['core_clock_hz']))
-            return self.service.start(core_name(instruction.core, 'memory'), 'memory', work, service, 0, cycle)
+            self.submit_memory(instruction, direction, offset, work, access.get('target_core', instruction.core))
+            return dict(pending=True, complete=None)
         # 所有 PE 的 load/store 竞争本 Core 的 memory 通道；服务量按实际访问范围计算。
         # load 在搬运后写 TileReg，store 先读 TileReg 再搬运；握手由 ExecutionUnit 负责。
         return self.service.start(core_name(instruction.core, 'memory'), 'memory', work,

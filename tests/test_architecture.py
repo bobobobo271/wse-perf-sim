@@ -46,7 +46,8 @@ class ArchitectureTests(unittest.TestCase):
         code = '''
 import sys
 from models.noc.unit import CommUnit
-from models.noc.compiler import compile_phase
+assert 'models.noc.compiler' not in sys.modules
+assert 'models.noc.routing' not in sys.modules
 for name in sys.modules:
     assert not name.startswith(('models.ssnpu', 'frontend',
                                'workloads', 'analysis',

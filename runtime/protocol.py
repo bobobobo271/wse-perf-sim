@@ -107,45 +107,6 @@ def unit_name(i):
 
 
 @dataclass(frozen=True)
-class ReceivePrepare:
-    instruction: object
-    version: tuple
-    expected: tuple  # (source, offset, nbytes)
-
-
-@dataclass(frozen=True)
-class PortFence:
-    instruction: object
-
-
-@dataclass(frozen=True)
-class WriteReservations:
-    instruction: object
-    entries: tuple  # (source, start cycle, service cycles, result latency)
-
-
-@dataclass(frozen=True)
-class RouterWrite:
-    instruction: object
-    version: tuple
-    source: int
-    offset: int
-    work: int
-
-
-@dataclass(frozen=True)
-class PublishReceive:
-    instruction: object
-
-
-@dataclass(frozen=True)
-class TransferReply:
-    instruction: object
-    event: str
-    detail: object = None
-
-
-@dataclass(frozen=True)
 class HBMRequest:
     instruction: object
     core: int
@@ -157,3 +118,15 @@ class HBMRequest:
 @dataclass(frozen=True)
 class HBMDone:
     instruction: object
+
+
+@dataclass(frozen=True)
+class TileDataAccess:
+    submit: object
+    wait: object
+    access: object
+
+
+@dataclass(frozen=True)
+class ReleaseTileStream:
+    submit: object

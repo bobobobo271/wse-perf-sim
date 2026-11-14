@@ -17,7 +17,7 @@ class Service:
         # 因此上一条结果仍在返回时，资源可以服务下一条；busy 不包含返回等待。
         self.available[resource] = end
         self.busy[resource] += service
-        if engine in ('memory', 'shared_read', 'shared_write'):
+        if engine in ('memory', 'shared_read', 'shared_write', 'sram', 'memory_request', 'memory_response'):
             self.bytes[resource] += work
         return dict(engine=engine, resource=resource, work=work,
                     start=cycle, service_end=end, complete=end + latency)

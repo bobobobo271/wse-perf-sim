@@ -1,4 +1,3 @@
-"""WSE communication boundary: no core instruction tables are required."""
-from runtime.communication import CommRequest, Accepted, Rejected, Completion, DataRange, DataCommand, DataReply
-
-__all__ = ['CommRequest', 'Accepted', 'Rejected', 'Completion', 'DataRange', 'DataCommand', 'DataReply']
+"""Core-independent communication message contract."""
+from runtime.communication import (CommRequest, CommSubmit, Accepted, Rejected, Completion,
+                                 DataAccess, DataReply, SendDesc, ReceiveDesc, TileBinding)

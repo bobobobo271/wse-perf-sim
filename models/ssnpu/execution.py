@@ -87,7 +87,7 @@ class ExecutionUnit(Component):
             self.nodes[j.instruction].task, self.nodes[j.instruction].age, str(j.instruction)))
         for job in jobs:
             i = self.nodes[job.instruction]
-            if job.state == 'computing' and job.result <= cycle:
+            if job.state == 'computing' and job.result is not None and job.result <= cycle:
                 # 结果到期才进入下一搬运阶段或写回；资源可能早在 service_end 就已经空闲。
                 job.stage += 1
                 job.state = 'ready' if job.stage < self.operation_count(i) else 'writing'
@@ -109,7 +109,10 @@ class ExecutionUnit(Component):
                 else:
                     if job.stage == 0:
                         self.observe(i.id, compute_start=cycle)
-                    self.observe(i.id, stage=event, state='computing')
+                    if not event.get('pending'):
+                        self.observe(i.id, stage=event, state='computing')
+                    else:
+                        self.observe(i.id, state='computing')
                     job.result, job.state = event['complete'], 'computing'
             if job.state == 'writing' and job.request is None:
                 # 顺序写回各 tile 输出。最后一个 AccessDone 到达后，才发送整条指令完成通知。
@@ -124,7 +127,7 @@ class ExecutionUnit(Component):
         return super().is_idle() and not self.commands
 
     def next_event(self):
-        return min((j.result for j in self.commands.values() if j.state == 'computing'), default=None)
+        return min((j.result for j in self.commands.values() if j.state == 'computing' and j.result is not None), default=None)
 
     def snapshot(self):
         return dict(super().snapshot(), commands={str(k): dict(state=j.state, request=j.request,

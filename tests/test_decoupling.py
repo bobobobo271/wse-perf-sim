@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 from api import simulate, simulate_core
 from config import default_config
-from runtime.communication import CommRequest, DataRange, DataCommand, DataReply
+from runtime.communication import CommRequest, DataAccess, DataReply
 from runtime.runner import Runner
 from examples.communication.fake_communit import FakeCommUnit
-from examples.communication.driver import ByteClient
+from examples.communication.streaming import ByteEndpoint, build_demo
 from test_model import ROOT, fixture, op
 
 
@@ -41,29 +41,29 @@ assert not any(k.startswith(('models.noc', 'models.memory')) for k in sys.module
 """
         subprocess.run([sys.executable, '-S', '-c', code], cwd=ROOT, check=True, capture_output=True)
 
+    @staticmethod
+    def copy_script(sub, peer):
+        r = sub.request
+        reply = yield DataAccess(r.request_id, 'prepare', -1,
+            detail=(r.send,r.receive,dict(throughput=32,latency=2),dict(throughput=32,latency=2)))
+        src,dst=reply.detail
+        reply = yield DataAccess(r.request_id,'read',0,src,0,16)
+        data=reply.detail
+        yield DataAccess(r.request_id,'write',1,dst,0,16,(sub.node,data))
+        yield DataAccess(r.request_id,'publish',-2,dst,detail=((0,16),))
+
     def test_fake_peer_uses_prepare_read_write_publish_contract(self):
-        source = b'abcd'
-        request = CommRequest('test', 'client', 0, 'copy', 0, 'test', (0,), 'test', (),
-                              DataRange(('x', 1), 0, 4, 4), DataRange(('y', 1), 0, 4, 4), 0)
-        def script(r, peer):
-            reply = yield DataCommand(r.token, 'prepare', r.destination, ((0, 0, 4),))
-            self.assertEqual(reply.event, 'posted')
-            reply = yield DataCommand(r.token, 'read', r.source)
-            self.assertEqual(reply.detail, source)
-            # ByteClient observes the command one cycle after it is sent.
-            start = peer.cycle + 6
-            reply = yield DataCommand(r.token, 'reserve', r.destination, ((0, start, 1, 0),))
-            self.assertEqual(reply.event, 'reserved')
-            reply = yield DataCommand(r.token, 'write', r.destination, (0, 0, 4, source))
-            self.assertEqual(reply.event, 'written')
-            reply = yield DataCommand(r.token, 'publish', r.destination)
-            self.assertEqual(reply.event, 'published')
-        peer = FakeCommUnit(script)
-        client = ByteClient(request, source, 0)
-        Runner({'communit': peer, 'client': client}).run()
-        self.assertEqual(bytes(client.destination), source)
+        from runtime.communication import SendDesc, ReceiveDesc, SendLayout, ReceiveLayout, TileBinding
+        request=CommRequest('test',(),1,0,(0,),'test',
+            SendDesc(TileBinding('x',1,'LocalTileReg',(0,0)),SendLayout(0,1,16,16,'OUT',0,16,0,True)),
+            ReceiveDesc(TileBinding('y',1,'SharedTileReg',(0,)),ReceiveLayout('OUT',16,0,((0,16),))))
+        source=bytes(range(16))
+        peer=FakeCommUnit(self.copy_script)
+        client=ByteEndpoint(0,request,source,0)
+        Runner({'communit':peer,client.name:client}).run()
+        self.assertEqual(bytes(client.destination),source)
         self.assertTrue(client.published)
-        self.assertEqual(client.completion.status, 'success')
+        self.assertEqual(client.completion.status,'success')
 
     def test_core_backend_injection_and_missing_backend(self):
         from config import wse_config
@@ -83,15 +83,7 @@ assert not any(k.startswith(('models.noc', 'models.memory')) for k in sys.module
             trace = TraceAdapter(path, config, plan)
             with self.assertRaisesRegex(ModelError, 'require comm_backend'):
                 Simulator(trace, config, core_only=True)
-            def script(r, peer):
-                yield DataCommand(r.token, 'prepare', r.destination, ((0, 0, 16),))
-                yield DataCommand(r.token, 'read', r.source)
-                yield DataCommand(r.token, 'fence', r.destination)
-                start = peer.cycle + 6
-                yield DataCommand(r.token, 'reserve', r.destination, ((0, start, 1, 2),))
-                yield DataCommand(r.token, 'write', r.destination, (0, 0, 16, None))
-                yield DataCommand(r.token, 'publish', r.destination)
-            peer = FakeCommUnit(script)
+            peer = FakeCommUnit(self.copy_script)
             report = Simulator(trace, config, core_only=True, comm_backend=peer).run()
             self.assertNotIn('noc', report)
             self.assertTrue(peer.is_idle())

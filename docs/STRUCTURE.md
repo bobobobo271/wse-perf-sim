@@ -128,3 +128,5 @@ from analysis.perfetto import to_pftrace
 - 比较外部模型、实测数据或拟合参数，放到 `benchmarks`。
 
 `tests/test_architecture.py` 检查模型和运行基础设施的依赖边界，以及独立 NoC 导入和基础 API 的可选依赖隔离。历史验证见 [目录重构验证](STRUCTURE_VALIDATION.md)。
+
+核与 NoC 的公共消息在 `runtime/communication.py` 与 `runtime/memory.py`。`models/noc/compiler.py` 只在编译阶段生成 CalReg，`models/noc/unit.py` 是唯一 Tile 通信执行器。按地址访问 SRAM 由 `models/noc/memory.py` 的聚合网络服务与 `models/memory/sram.py` 的目标服务执行。

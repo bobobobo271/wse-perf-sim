@@ -26,7 +26,7 @@ def simulate(capture_dir, config=None, *, communication_plan=None):
         raise ModelError(f'Invalid capture: {exc}') from exc
 
 
-def simulate_core(capture_dir, config=None, *, comm_backend=None):
+def simulate_core(capture_dir, config=None, *, comm_backend=None, memory_backends=None):
     """Replay a core workload with an optional injected message-only backend."""
     from simulator import Simulator
     from frontend.capture import TraceAdapter
@@ -37,6 +37,6 @@ def simulate_core(capture_dir, config=None, *, comm_backend=None):
     config = validate_config(copy.deepcopy(config))
     try:
         trace = TraceAdapter(capture_dir, config)
-        return Simulator(trace, config, core_only=True, comm_backend=comm_backend).run()
+        return Simulator(trace, config, core_only=True, comm_backend=comm_backend, memory_backends=memory_backends).run()
     except (KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         raise ModelError(f'Invalid capture: {exc}') from exc

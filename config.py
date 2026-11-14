@@ -28,6 +28,10 @@ ENGINES = {
     'shared_write': (256, 2, 'byte/cycle', 'Core'),
 }
 
+MEMORY_TRANSPORT_DEFAULTS = dict(throughput=32, latency=4, control_bytes=16, header_bytes=12,
+    inflight=8, sram_queue_depth=16, source='synthetic aggregate transport; core cycles; not SSM calibrated')
+
+
 HBM_DEFAULTS = dict(bandwidth_bytes_per_second=10_000_000_000_000,
                     per_core_bytes_per_cycle=128, startup_ns=0)
 
@@ -81,6 +85,11 @@ def validate_config(c):
         raise ModelError(f'Incomplete configuration: {exc}') from exc
     if "wse" in c:
         validate_wse(c)
+        c['memory_transport'] = MEMORY_TRANSPORT_DEFAULTS | c.get('memory_transport', {})
+        for key in ('throughput', 'latency', 'control_bytes', 'header_bytes', 'inflight', 'sram_queue_depth'):
+            value = c['memory_transport'][key]
+            if type(value) is not int or value < (0 if key in ('latency', 'header_bytes') else 1):
+                raise ModelError(f'Invalid memory transport parameter {key}')
     if 'hbm' in c:
         if 'wse' not in c:
             raise ModelError('HBM requires a WSE clock configuration')
@@ -121,6 +130,7 @@ def wse_config():
     c = default_config()
     c['name'] = 'wse40-shared-tile-pending'
     c['hbm'] = HBM_DEFAULTS.copy()
+    c['memory_transport'] = MEMORY_TRANSPORT_DEFAULTS.copy()
     c['wse'] = {k: dict(value=v, unit=u, status=s,
                          source=('WSE whitepaper v0.2' if s == 'documented' else
                                  'user-confirmed first-version model; 2026-11-13'))
@@ -162,8 +172,12 @@ def validate_wse(c):
     if c['engines']['shared_write'].get('dtype_overrides'):
         raise ModelError('WSE reservations require one dtype-independent shared write service')
 
-def platform_spec(config):
-    """Only network clocks/rates and declared endpoint write service cross over."""
-    return dict(network={k: v['value'] for k, v in config['wse'].items() if not k.startswith('sram_')},
-                write_service={k: config['engines']['shared_write'][k] for k in ('throughput', 'latency')},
-                endpoint_command_cycles=1, reservation_roundtrip_cycles=4)
+def platform_spec(config, *, access_bytes, tx_bytes, rx_bytes):
+    """Use core service declarations and explicitly supplied endpoint limits."""
+    platform = dict(network={k: v['value'] for k, v in config['wse'].items() if not k.startswith('sram_')},
+                    write_service={k: config['engines']['shared_write'][k] for k in ('throughput', 'latency')})
+    platform['read_service'] = {
+        k: config['engines']['shared_read'][k] for k in ('throughput', 'latency')
+    }
+    platform.update(access_bytes=access_bytes, tx_bytes=tx_bytes, rx_bytes=rx_bytes)
+    return platform

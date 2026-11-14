@@ -1,45 +1,47 @@
-"""Scripted communication peer for core tests; no network model is imported.
+"""Scripted peer for core tests; consumes the same v1 contract as CommUnit.
 
-script(request, peer) yields DataCommand objects. Each command waits for the
-matching DataReply before the generator resumes. Tests choose ranges, resource
-reservation times and failures explicitly. Publication precedes completion.
+script(submission, peer) yields DataAccess. It resumes only after the matching
+access ID/event returns. This fake has no routing or Calendar implementation.
 """
 from runtime.component import Component
-from runtime.communication import CommRequest, Accepted, Completion, DataReply
+from runtime.communication import CommSubmit, Accepted, Completion, DataReply
 
 
 class FakeCommUnit(Component):
     def __init__(self, script):
         super().__init__('communit')
-        self.script = script
-        self.jobs = {}
-        self.history = []
+        self.script, self.jobs, self.history = script, {}, []
 
     def proceed(self, token, reply=None):
-        request, steps = self.jobs[token]
+        sub, steps, pending = self.jobs[token]
+        if reply and (reply.access_id, reply.event) != pending:
+            raise ValueError('Unexpected data reply')
         try:
             command = next(steps) if reply is None else steps.send(reply)
         except StopIteration:
-            self.send(request.endpoint, Completion(token, 'success'))
+            self.send(sub.endpoint, Completion(token, 'success'))
             del self.jobs[token]
         else:
             if command.token != token:
-                raise ValueError('Script command token differs from request')
-            self.send(request.endpoint, command)
+                raise ValueError('Script token differs from request')
+            event = dict(prepare='prepared', read='read_done', write='write_done', publish='published')[command.kind]
+            self.jobs[token] = sub, steps, (command.access_id, event)
+            self.send(sub.endpoint, command)
 
     def tick(self, cycle):
         for _, message in self.inputs(cycle):
             self.history.append((cycle, message))
-            if isinstance(message, CommRequest):
-                if message.token in self.jobs:
+            if isinstance(message, CommSubmit):
+                token = message.request.request_id
+                if token in self.jobs:
                     raise ValueError('Duplicate test request')
-                self.jobs[message.token] = message, iter(self.script(message, self))
-                self.send(message.endpoint, Accepted(message.token))
-                self.proceed(message.token)
+                self.jobs[token] = message, iter(self.script(message, self)), None
+                self.send(message.endpoint, Accepted(token))
+                self.proceed(token)
             elif isinstance(message, DataReply):
                 if message.event == 'fault':
-                    request, _ = self.jobs.pop(message.token)
-                    self.send(request.endpoint, Completion(message.token, 'fault', str(message.detail), False))
+                    sub, _, _ = self.jobs.pop(message.token)
+                    self.send(sub.endpoint, Completion(message.token, 'fault', str(message.detail), False))
                 else:
                     self.proceed(message.token, message)
             else:

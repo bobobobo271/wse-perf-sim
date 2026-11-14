@@ -1,107 +1,128 @@
-"""Joint route/Calendar compiler, independent of core instructions and bindings."""
-import copy
-import math
-from bisect import bisect_left, insort
-from collections import defaultdict
+"""Offline placement for the v1 copy protocol, with finite endpoint buffers."""
+from collections import Counter, defaultdict
+from dataclasses import asdict
 from fractions import Fraction
+from math import ceil
 
-from runtime.communication import digest
-from models.noc.routing import node_id, integer, multicast_routes, route_tree, transmissions, receive_offset
 from errors import ModelError
+from runtime.communication import coverage, digest
+from models.noc.routing import integer, node_id, route_tree
 
 
-def reserve_packet(calendar, uses, flits):
-    """Find the first start with space on every resource at its relative offset."""
-    start = 0
-    while True:
-        earliest = start
-        for resource, offset in uses:
-            intervals = calendar[resource]
-            begin = start + offset
-            index = bisect_left(intervals, (begin,))
-            if index and intervals[index - 1][1] > begin:
-                earliest = max(earliest, intervals[index - 1][1] - offset)
-            elif index < len(intervals) and intervals[index][0] < begin + flits:
-                earliest = max(earliest, intervals[index][1] - offset)
-        if earliest == start:
-            for resource, offset in uses:
-                insort(calendar[resource], (start + offset, start + offset + flits))
-            return start
-        start = earliest
+def compile_calendar(opcode, layouts, platform):
+    """Compile one phase from {node: (SendLayout | None, ReceiveLayout | None)}."""
+    p = platform['network']
+    integer(opcode, 'copy opcode', 1)
+    if not layouts:
+        raise ModelError('No participating nodes')
+    for node in layouts:
+        node_id(node)
+    payload = integer(p['link_bytes_per_cycle'] - p['header_bytes'], 'flit payload', 1)
+    tx = integer(platform['tx_bytes'], 'TX capacity', 1)
+    rx = integer(platform['rx_bytes'], 'RX capacity', 1)
+    chunk = min(integer(platform['access_bytes'], 'access size', 1), tx, rx)
+    ratio = Fraction(p['noc_clock_hz'], p['core_clock_hz'])
+    # Both clocks meet every ratio.denominator core cycles. At those edges the
+    # read/NoC/write pipeline can use one repeatable relative schedule.
+    # Two queue handoffs in each direction through CommPort, plus one guard edge.
+    service = max(
+        ceil(chunk / integer(platform[k]['throughput'], k, 1))
+        + integer(platform[k]['latency'], k + ' latency') + 5
+        for k in ('read_service', 'write_service')
+    )
+    expected, remote, routes, segments = defaultdict(list), Counter(), {}, []
+    if any(not isinstance(desc.recv_sym_base, str) or not desc.recv_sym_base
+           for pair in layouts.values() for desc in pair if desc is not None):
+        raise ModelError('Receive base must be a nonempty logical name')
+    max_network_cycles = 0
+    for node, (send, receive) in sorted(layouts.items()):
+        if send is None and receive is None:
+            raise ModelError('Each participant must send or receive')
+        if send is None:
+            continue
+        integer(send.src_offset, 'source offset')
+        integer(send.self_off, 'destination offset')
+        integer(send.row_count, 'row count', 1)
+        integer(send.row_bytes, 'row bytes', 1)
+        integer(send.src_row_stride, 'source stride', send.row_bytes)
+        integer(send.recv_row_stride, 'destination stride', send.row_bytes)
+        if send.route_bits == 0 and send.self_copy:
+            children, landing, distance = {node: ()}, set(), {node: 0}
+        else:
+            children, landing, distance = route_tree(node, send.route_bits)
+        if node in landing or not landing <= layouts.keys():
+            raise ModelError('Route must land at registered remote participants; use selfCopy for local data')
+        targets = sorted(landing | ({node} if send.self_copy else set()))
+        for target in targets:
+            dest = layouts[target][1]
+            if dest is None or dest.recv_sym_base != send.recv_sym_base:
+                raise ModelError('Missing matching receive registration')
+        routes[node] = dict(children=children, distance=distance)
+        max_network_cycles = max(max_network_cycles, p['tx_cdc_cycles'] + ceil(chunk / payload)
+                                 + max(distance.values()) * p['hop_cycles'] + p['rx_cdc_cycles'] + p['guard_cycles'])
+        for row in range(send.row_count):
+            start = send.self_off + row * send.recv_row_stride
+            for target in targets:
+                expected[target].append((start, start + send.row_bytes))
+                if target != node:
+                    remote[target] += send.row_bytes
+            for offset in range(0, send.row_bytes, chunk):
+                segments.append(dict(source=node, targets=targets, nbytes=min(chunk, send.row_bytes - offset),
+                                     src=send.src_offset + row * send.src_row_stride + offset,
+                                     dst=start + offset))
+    senders = set(routes)
+    receivers = {node for node, (_, receive) in layouts.items() if receive is not None}
+    if not (len(senders) == 1 or len(receivers) == 1):
+        raise ModelError('Streaming v1 supports one-to-many broadcast or many-to-one gather')
+    for node in receivers:
+        receive = layouts[node][1]
+        capacity = integer(receive.capacity, 'capacity', 1)
+        if remote[node] != integer(receive.exp_val, 'expVal'):
+            raise ModelError('Remote traffic differs from expVal')
+        valid = coverage(receive.valid_ranges, capacity)
+        if not valid or coverage(expected[node], capacity) != valid:
+            raise ModelError('Transfers do not cover the target valid ranges')
+
+    stride = ratio.denominator * ceil(max(service, ceil(max_network_cycles / ratio) + 1)
+                                     / ratio.denominator)
+    tx_slots, rx_slots = Counter(), Counter()
+    slot = 0
+    for segment in segments:
+        size, source, targets = segment['nbytes'], segment['source'], segment['targets']
+        while (any(tx_slots[source, s] + size > tx for s in range(slot, slot + 3))
+               or any(rx_slots[node, s] + size > rx for node in targets for s in (slot + 1, slot + 2))):
+            slot += 1
+        for s in range(slot, slot + 3):
+            tx_slots[source, s] += size
+        for node in targets:
+            for s in (slot + 1, slot + 2):
+                rx_slots[node, s] += size
+        segment.update(read_cycle=slot * stride, inject_cycle=(slot + 1) * stride,
+                       write_cycle=(slot + 2) * stride, check_cycle=(slot + 3) * stride)
+        # Fully expand relative link events offline. Runtime only adds align origin.
+        route = routes[source]
+        segment['links'] = [dict(link=(parent, child), resource=f'link:{parent}->{child}',
+            flit=offset // payload, header_bytes=p['header_bytes'], padding_bytes=payload - min(payload, size-offset),
+            noc_cycle=int(segment['inject_cycle'] * ratio) + p['tx_cdc_cycles']
+                + route['distance'][parent] * p['hop_cycles'] + offset // payload,
+            payload_bytes=min(payload, size-offset), wire_bytes=p['link_bytes_per_cycle'])
+            for parent, children in route['children'].items() for child in children
+            for offset in range(0, size, payload)]
+        slot += 1
+    entries = {node: dict(send=asdict(send) if send else None, receive=asdict(receive) if receive else None)
+               for node, (send, receive) in sorted(layouts.items())}
+    return dict(opcode=opcode, entries=entries, segments=segments, stride=stride)
 
 
-def compile_phase(phase, platform):
-    """Place packet trains on the NoC and bound the queued destination writes."""
-    if phase.get('routing') != 'auto':
-        if 'routing' in phase:
-            raise ModelError('Unknown routing mode')
-        return
-    parameters = platform['network']
-    payload = parameters['link_bytes_per_cycle'] - parameters['header_bytes']
-    participants = {node_id(entry['core']) for entry in phase['nodes']}
-    write = platform['write_service']
-    core_cycle = Fraction(parameters['noc_clock_hz'], parameters['core_clock_hz'])
-    tx, hop, guard = (parameters[key] for key in ('tx_cdc_cycles', 'hop_cycles', 'guard_cycles'))
-    calendar, writes = defaultdict(list), defaultdict(list)
-    for entry in sorted(phase['nodes'], key=lambda item: item['core']):
-        if any(field in entry for field in ('routes', 'route_bits', 'window')):
-            raise ModelError('Automatic routing takes destinations, not precompiled routes/windows')
-        destinations = entry.get('destinations', sorted(participants))
-        if not set(destinations) <= participants:
-            raise ModelError('Route lands outside registered participants')
-        size = integer(entry['nbytes'], 'nbytes', 1)
-        flits = math.ceil(size / payload)
-        service = math.ceil(size / write['throughput']) * core_cycle
-        source = entry['core']
-        entry['routes'] = []
-        for bits in multicast_routes(source, destinations):
-            children, landing, distance = route_tree(source, bits)
-            uses = [(('link', node, child), tx + distance[node] * hop)
-                    for node, peers in children.items() for child in peers]
-            if children[source]:
-                uses.append((('inject', source), tx))
-            uses.extend((('eject', node), tx + distance[node] * hop - 1)
-                        for node in landing if node != source)
-            start = reserve_packet(calendar, uses, flits)
-            hops = max(distance.values())
-            network_tail = tx + flits - 1 + hops * hop if hops else 0
-            route = dict(route_bits=bits, start_cycle=start, end_cycle=start + network_tail + guard)
-            entry['routes'].append(route)
-            for node in landing:
-                ready = start + receive_offset(distance[node], flits, parameters)
-                writes[node].append((ready, service, route))
-
-    # The receiver buffers whole packets while its Shared write port is busy.
-    # Round-up to the core clock adds less than one core cycle to the queue tail.
-    endpoint = platform['endpoint_command_cycles'] * core_cycle
-    visibility = (1 + write['latency']) * core_cycle
-    for requests in writes.values():
-        requests.sort(key=lambda request: request[0])
-        ready_times, finishes = [], []
-        finish = 0
-        for ready, service, _ in requests:
-            finish = max(finish, ready + endpoint) + service
-            ready_times.append(ready)
-            finishes.append(finish)
-        for ready, _, route in requests:
-            # Requests that round to the same core edge can write in either order.
-            last_tie = bisect_left(ready_times, ready + core_cycle) - 1
-            end = math.ceil(finishes[last_tie] + visibility) + guard
-            route['end_cycle'] = max(route['end_cycle'], end)
-
-
-def make_installation(phases, platform):
-    """WSE-side configuration contains no instruction ids or Tile descriptors."""
-    calreg = {}
-    for phase in phases:
-        entries = {}
-        for entry in phase['nodes']:
-            routes = transmissions(entry, platform['network'])
-            entries[entry['core']] = dict(
-                windows=[{k: route[k] for k in ('start_cycle', 'end_cycle')} for route in routes],
-                route_digest=digest([route['route_bits'] for route in routes]),
-                nbytes=entry['nbytes'], source_offset=entry.get('source_offset', 0),
-                destination_offset=entry['destination_offset'], expected=copy.deepcopy(entry['expected']))
-        calreg[phase['name']] = dict(opcode=phase['opcode'], epoch=phase['epoch'], entries=entries)
-    body = dict(schema='wse-communit/1', platform_hash=digest(platform), calreg=calreg)
+def make_installation(calendars, platform):
+    """Install reusable CalReg[opcode] profiles, independent of runtime epochs."""
+    profiles = {}
+    for calendar in calendars:
+        opcode = calendar['opcode']
+        if opcode in profiles and digest(profiles[opcode]) != digest(calendar):
+            raise ModelError('Different layouts/routes need different CalReg opcodes')
+        profiles[opcode] = calendar
+    if not profiles:
+        raise ModelError('No Calendar profiles to install')
+    body = dict(schema='wse-communit/2', platform_hash=digest(platform), calreg=profiles)
     return dict(body, version=digest(body))
