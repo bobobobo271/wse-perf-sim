@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import hashlib
 import json
+from typing import NotRequired, TypedDict
 
 from errors import ModelError
 
@@ -12,11 +13,6 @@ def digest(value):
     normalized = json.loads(json.dumps(value, allow_nan=False))
     encoded = json.dumps(normalized, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-@dataclass(frozen=True)
-class Accepted:
-    token: str
 
 
 @dataclass(frozen=True)
@@ -32,14 +28,6 @@ class Completion:
     status: str
     error: str = ''
     safe_to_release: bool = True
-
-
-@dataclass(frozen=True)
-class TileBinding:
-    object_id: str
-    version: int
-    memory_space: str
-    owner: tuple
 
 
 @dataclass(frozen=True)
@@ -63,34 +51,27 @@ class ReceiveLayout:
     valid_ranges: tuple  # Half-open logical ranges, including all non-padding bytes.
 
 
-@dataclass(frozen=True)
-class SendDesc:
-    binding: TileBinding
-    layout: SendLayout
-
-
-@dataclass(frozen=True)
-class ReceiveDesc:
-    binding: TileBinding
-    layout: ReceiveLayout
-
-
-@dataclass(frozen=True)
-class CommRequest:
-    request_id: str
-    origin: tuple
+class CommRequest(TypedDict):
     opcode: int
-    epoch: int
-    members: tuple
-    version: str
-    send: SendDesc | None = None
-    receive: ReceiveDesc | None = None
+    route_bits: NotRequired[int]
+    send_bytes: NotRequired[int]
+    expected_receive_bytes: NotRequired[int]
+
+
+def request_for(opcode, send, receive):
+    request = CommRequest(opcode=opcode)
+    if send is not None:
+        request.update(route_bits=send.route_bits, send_bytes=send.row_count * send.row_bytes)
+    if receive is not None:
+        request['expected_receive_bytes'] = receive.exp_val
+    return request
 
 
 @dataclass(frozen=True)
 class CommSubmit:
     node: int
     endpoint: str
+    token: str  # Simulator correlation metadata, outside the submitted operands.
     request: CommRequest
 
 
@@ -99,11 +80,9 @@ class DataAccess:
     token: str
     kind: str
     access_id: int
-    handle: tuple | None = None
-    offset: int = 0
-    nbytes: int = 0
-    detail: object = None
-    node: int | None = None  # Endpoint-scoped request identity, independent of origin.
+    ranges: tuple  # Compiled half-open storage ranges for this flit.
+    node: int
+    data: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -113,22 +92,6 @@ class DataReply:
     access_id: int
     detail: object = None
     node: int | None = None  # Endpoint-scoped request identity, independent of origin.
-
-
-def request_from_dict(data):
-    data = dict(data)
-    data['origin'], data['members'] = tuple(data['origin']), tuple(data['members'])
-    for key, desc_type, layout_type in (
-            ('send', SendDesc, SendLayout), ('receive', ReceiveDesc, ReceiveLayout)):
-        if data[key] is None:
-            continue
-        desc = data[key]
-        binding, layout = dict(desc['binding']), dict(desc['layout'])
-        binding['owner'] = tuple(binding['owner'])
-        if key == 'receive':
-            layout['valid_ranges'] = tuple(map(tuple, layout['valid_ranges']))
-        data[key] = desc_type(TileBinding(**binding), layout_type(**layout))
-    return CommRequest(**data)
 
 
 def coverage(ranges, capacity):

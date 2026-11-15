@@ -1,4 +1,4 @@
-"""Issue #4: deterministic WSE40 runs with finite 32/64 B endpoint buffers."""
+"""Issue #4: deterministic WSE40 runs with finite 64/128 B endpoint buffers."""
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -7,7 +7,7 @@ import unittest
 
 from examples.communication.streaming import build_demo, demo_layouts, execute, run_demo
 from errors import ModelError
-from runtime.communication import ReceiveLayout, Rejected
+from runtime.communication import ReceiveLayout, Rejected, request_for
 from analysis.pipeline import service_intervals
 from models.noc.routing import route_bitmap
 from models.noc.compiler import compile_calendar
@@ -18,7 +18,7 @@ from tiles import version_key
 class CommUnitTests(unittest.TestCase):
     def test_broadcast_and_gather_match_bytes_with_bounded_buffers(self):
         for mode, remote in (('broadcast', {1: 512, 2: 512, 3: 512}), ('gather', {3: 1536})):
-            for size in (32, 64):
+            for size in (64, 128):
                 with self.subTest(mode=mode, buffer_bytes=size):
                     report = run_demo(mode, buffer_bytes=size)
                     events = report['events']
@@ -29,17 +29,15 @@ class CommUnitTests(unittest.TestCase):
                     self.assertGreater(aligned['cycle'], 33)  # Last rank submits at core cycle 33.
                     self.assertLess(next(e['cycle'] for e in events if e['kind'] == 'inject'),
                                     max(e['cycle'] for e in events if e['kind'] == 'read_done'))
-                    if size == 64:
+                    if size == 128:
                         first_write = min(e['cycle'] for e in events if e['kind'] == 'write')
                         last_inject = max(e['cycle'] for e in events if e['kind'] == 'inject')
                         self.assertLess(first_write, last_inject)
                     for node, nbytes in remote.items():
                         writes = [e for e in events if e['kind'] == 'write_visible' and e['node'] == node]
                         self.assertEqual(sum(e['nbytes'] for e in writes), nbytes)
-                        publish, = [e for e in events if e['kind'] == 'published' and e['node'] == node]
-                        self.assertGreater(publish['cycle'], max(e['cycle'] for e in writes))
                         completion, = [e for e in events if e['kind'] == 'completion' and e['node'] == node]
-                        self.assertGreaterEqual(completion['cycle'], publish['cycle'])
+                        self.assertEqual(completion['cycle'], max(e['cycle'] for e in writes))
 
     def test_late_read_fault_keeps_bindings_quarantined(self):
         unit, clients = build_demo('broadcast', read_delay=50)
@@ -62,17 +60,17 @@ class CommUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(ModelError, 'Overlapping'):
             compile_calendar(opcode, wrong, unit.platform)
 
-    def test_communit_rejects_stale_plan_and_duplicate_node(self):
+    def test_communit_rejects_wrong_size_and_duplicate_node(self):
         unit, clients = build_demo('broadcast')
         sub = clients[0].submission
-        unit.submit(replace(sub, request=replace(sub.request, version='stale')))
+        unit.submit(replace(sub, request=dict(sub.request, send_bytes=511)))
         (_, _, rejected), = unit.drain_outputs()
         self.assertIsInstance(rejected, Rejected)
         self.assertFalse(rejected.retryable)
         self.assertFalse(unit.participants)
         unit.submit(sub)
         unit.drain_outputs()
-        unit.submit(replace(sub, request=replace(sub.request, request_id='duplicate-node')))
+        unit.submit(replace(sub, token='duplicate-node'))
         (_, _, rejected), = unit.drain_outputs()
         self.assertIsInstance(rejected, Rejected)
         self.assertEqual(len(unit.participants), 1)
@@ -95,43 +93,46 @@ class CommUnitTests(unittest.TestCase):
             (path / 'manifest.json').write_text(json.dumps(manifest))
             plan = dict(schema='wse-communication/stream-v1', non_speculative=True,
                         buffers=dict(access_bytes=32, tx_bytes=64, rx_bytes=64),
-                        phases=[dict(name='broadcast', opcode=1, epoch=1, nodes=[
+                        phases=[dict(name='broadcast', opcode=1, nodes=[
                             dict(core=0, owner='produce', send=dict(source_version=list(version_key(x)),
-                                src_offset=0, row_count=1, row_bytes=128, src_row_stride=128,
-                                recv_sym_base='OUTPUT', self_off=0, recv_row_stride=128,
-                                route_bits=route_bitmap((0, 1), (1,)))),
-                            dict(core=1, owner='receiver', receive=dict(target=y, recv_sym_base='OUTPUT', exp_val=128)),
+                                nbytes=128, route_bits=route_bitmap((0, 1), (1,)))),
+                            dict(core=1, owner='receiver', receive=dict(target=y, exp_val=128)),
                         ])])
-            report = simulate(path, communication_plan=plan)
+            from config import wse_config
+            config = wse_config()
+            config['message_log'] = True
+            report = simulate(path, config, communication_plan=plan)
         self.assertTrue(report['noc']['drained'])
         self.assertTrue(any(i['lane'] == 'NoC/link:0->1' for i in service_intervals(report)))
         events = report['noc']['events']
         self.assertEqual(sum(e['nbytes'] for e in events if e['kind'] == 'write_visible'), 128)
+        links = [e for e in events if e['kind'] == 'link']
+        self.assertEqual([e['payload_bytes'] for e in links], [52, 52, 24])
+        self.assertEqual([e['wire_bytes'] for e in links], [64, 64, 64])
+        messages = report['messages']
+        submitted = {m['node']: m for m in messages if m['type'] == 'CommSubmit'}
+        self.assertEqual(submitted[0]['request'],
+                         dict(opcode=1, route_bits=route_bitmap((0,1),(1,)), send_bytes=128))
+        self.assertEqual(submitted[1]['request'],
+                         dict(opcode=1, expected_receive_bytes=128))
+        self.assertFalse(any(m['type'] == 'Accepted' or m.get('kind') == 'prepare' for m in messages))
+        sent = [e for e in events if e['kind'] == 'sent'][-1]
+        done = {e['node']: e['cycle'] for e in events if e['kind'] == 'completion'}
+        self.assertEqual(done[0], sent['cycle'])
+        self.assertEqual(done[1], max(e['cycle'] for e in events if e['kind'] == 'write_visible'))
         rows = {row['op_id']: row for row in report['timeline']}
+        for node in (0, 1):
+            self.assertEqual(rows[f'comm:broadcast:{node}:wait']['wait_start'], submitted[node]['sent'])
         self.assertLess(rows['comm:broadcast:0:submit']['complete'], rows['comm:broadcast:0:wait']['complete'])
         self.assertLess(rows['comm:broadcast:1:wait']['complete'], rows['consume']['issue'])
 
-    def test_prepare_waits_for_capacity_before_align(self):
-        # Same broadcast/config/data, only node 3's prepare service waits until 80.
-        from examples.communication.streaming import ByteEndpoint
-        class LateCapacity(ByteEndpoint):
-            held = None
-            def access(self, command):
-                if command.kind == 'prepare' and self.cycle < 80:
-                    self.held = command
-                else:
-                    super().access(command)
-            def tick(self, cycle):
-                super().tick(cycle)
-                if cycle >= 80 and self.held is not None:
-                    command, self.held = self.held, None
-                    super().access(command)
+    def test_last_ready_submission_starts_alignment(self):
+        # Same broadcast; change only the last endpoint's submission time.
         unit, clients = build_demo('broadcast')
-        old = clients[3]
-        clients[3] = LateCapacity(3, old.submission.request, old.source, old.arrival)
+        clients[3].arrival = 80
         execute(unit, clients)
         aligned, = [e for e in unit.events if e['kind'] == 'align']
-        self.assertGreater(aligned['cycle'], 80)
+        self.assertEqual(aligned['cycle'], 81)
         self.assertEqual(bytes(clients[3].destination), clients[0].source)
 
     def test_failed_write_never_publishes_destination(self):
@@ -144,7 +145,7 @@ class CommUnitTests(unittest.TestCase):
                     super().access(command)
         unit, clients = build_demo('broadcast')
         old = clients[3]
-        clients[3] = FailedWrite(3, old.submission.request, old.source, old.arrival)
+        clients[3] = FailedWrite(3, old.submission.request, old.source, old.arrival, receive=old.receive_layout)
         execute(unit, clients)
         self.assertIn('injected write failure', unit.failure)
         self.assertFalse(clients[3].published)
@@ -166,7 +167,6 @@ class CommUnitTests(unittest.TestCase):
         from examples.communication.streaming import ByteEndpoint
         from models.noc.compiler import make_installation
         from models.noc.unit import CommUnit
-        from runtime.communication import ReceiveDesc, SendDesc
         unit, clients = build_demo('broadcast')
         opcode, layouts = demo_layouts('broadcast')
         valid = tuple((row*48,row*48+32) for row in range(16))
@@ -180,11 +180,9 @@ class CommUnitTests(unittest.TestCase):
         for row in range(16):
             expected[row*48:row*48+32] = source[row*40:row*40+32]
         for node,old in list(clients.items()):
-            r=old.submission.request
-            r=replace(r,version=installation['version'],
-                      send=SendDesc(r.send.binding,send) if r.send else None,
-                      receive=ReceiveDesc(r.receive.binding,receive) if r.receive else None)
-            clients[node]=ByteEndpoint(node,r,source if node==0 else b'',old.arrival)
+            request = request_for(opcode, *layouts[node])
+            clients[node] = ByteEndpoint(node, request, source if node==0 else b'', old.arrival,
+                                         receive=layouts[node][1])
         execute(unit,clients)
         for node in (1,2,3):
             self.assertEqual(clients[node].destination,expected)

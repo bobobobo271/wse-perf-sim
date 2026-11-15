@@ -1,6 +1,6 @@
 # WSE40 Calendar 与访存集成
 
-本项目采用 Python 3.11+ 标准库。拓扑为 5×8 个节点，节点号 `row*8+column`。核／NoC 时钟配置为 1.4／2 GHz，每条有向链路 64 B/NoC 周期；包头暂定 12 B/flit，默认有效载荷上限为 52 B。Shared/Local Tile 容量和端口参数仍是待校准配置。
+本项目采用 Python 3.11+ 标准库。拓扑为 5×8 个节点，节点号 `row*8+column`。核／NoC 时钟配置为 1.65／2 GHz，每条有向链路 64 B/NoC 周期；每个 flit 有 52 B 有效载荷和 12 B 包头。Shared/Local Tile 容量和端口参数仍是待校准配置。
 
 当前接口与执行规则见 [COMMUNIT.md](COMMUNIT.md)，测试条件见 [INTERFACE_VALIDATION.md](INTERFACE_VALIDATION.md)。
 
@@ -13,7 +13,7 @@ compiled = compile_plan(source_plan, config)
 report = simulate(capture_dir, config, communication_plan=compiled)
 ```
 
-编译结果包含核侧路由与布局，以及 WSE 侧 CalReg 相对时隙。运行时只在全部参与者资源就绪后确定共同时间原点，并按已安装配置执行。`CalReg[opcode]` 可供多个 epoch 复用。`slot_cycles/slots_per_period` 是旧配置文件保留字段，当前编译器按片段服务和路径确定 stride，不使用它们排时隙。
+编译结果包含核侧路由与布局，以及 WSE 侧 CalReg 相对时隙。运行时只在全部参与者资源就绪后确定共同时间原点，并按已安装配置执行。`CalReg[opcode]` 在上一轮排空后可复用。`slot_cycles/slots_per_period` 是旧配置文件保留字段，当前编译器按片段服务和路径确定 stride，不使用它们排时隙。
 
 通信采用有限 TX/RX 缓冲和分段读写。仅在本地接收范围完整可见后由 TileReg 发布，本地发送责任结束后返回成功。源引用保守保留到本地请求成功。各通信轮当前串行准入。
 

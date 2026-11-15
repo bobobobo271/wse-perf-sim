@@ -1,6 +1,6 @@
 """Behavioral auto-routing tests using explicit synthetic captures and WSE40 config.
 
-Baseline: 5x8 mesh, 1.4/2 GHz core/NoC, 64 B/flit, 12 B header,
+Baseline: 5x8 mesh, 1.65/2 GHz core/NoC, 64 B/flit, 12 B header,
 1 NoC cycle/hop, 256 B/core-cycle Shared write port. Vary one named condition.
 """
 import copy

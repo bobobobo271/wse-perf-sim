@@ -7,9 +7,8 @@ from pathlib import Path
 
 from config import wse_config
 from errors import ModelError
-from runtime.communication import (Accepted, Completion, ReceiveDesc, ReceiveLayout, Rejected,
-    SendDesc, SendLayout, DataAccess, DataReply, CommRequest, CommSubmit,
-    TileBinding, coverage)
+from runtime.communication import (Completion, ReceiveLayout, Rejected, SendLayout,
+                                   DataAccess, DataReply, CommSubmit, request_for, coverage)
 from models.noc.routing import route_bitmap
 from models.noc.unit import CommUnit
 from models.noc.compiler import compile_calendar, make_installation
@@ -21,90 +20,78 @@ from runtime.service import Service
 class ByteEndpoint(Component):
     """A fake TileReg with byte storage and independent timed read/write ports."""
 
-    def __init__(self, node, request, source, arrival, *, read_delay=0):
-        super().__init__(f'endpoint:{node}:{request.epoch}')
-        self.submission = CommSubmit(node, self.name, request)
-        self.source = source
-        self.destination = bytearray(request.receive.layout.capacity) if request.receive else None
-        self.arrival = arrival
-        self.read_delay = read_delay
-        self.handles = tuple(
-            (desc.binding.object_id, desc.binding.version) if desc else None
-            for desc in (request.send, request.receive))
+    def __init__(self, node, request, source, arrival, *, token=None, receive=None,
+                 read_service=None, write_service=None, read_delay=0):
+        token = f'req:{node}' if token is None else token
+        super().__init__(f'endpoint:{node}:{token}')
+        self.submission = CommSubmit(node, self.name, token, request)
+        self.source, self.receive_layout = source, receive
+        self.destination = bytearray(receive.capacity) if receive else None
+        self.read_service = read_service or dict(throughput=256, latency=2)
+        self.write_service = write_service or dict(throughput=256, latency=2)
+        self.arrival, self.read_delay = arrival, read_delay
         self.service = Service()
         self.pending, self.written = [], []
-        self.accepted = self.completion = None
+        self.submitted = False
+        self.completion = None
         self.published = False
 
     def reply(self, command, event, detail=None):
         self.send('communit', DataReply(command.token, event, command.access_id, detail, command.node))
 
     def access(self, command):
-        request = self.submission.request
-        if command.token != request.request_id:
+        if command.token != self.submission.token or command.node != self.submission.node:
             raise ModelError('Unknown request at byte endpoint')
         kind = command.kind
-        if kind == 'prepare':
-            send, receive, self.read_service, self.write_service = command.detail
-            if (send, receive) != (request.send, request.receive):
-                raise ModelError('Prepare uses stale bindings')
-            if send:
-                layout = send.layout
-                if layout.src_offset + (layout.row_count - 1) * layout.src_row_stride + layout.row_bytes > len(self.source):
-                    raise ModelError('Source layout exceeds binding')
-            self.reply(command, 'prepared', self.handles)
-            return
-        index = 0 if kind == 'read' else 1
-        if command.handle is None or command.handle != self.handles[index]:
-            raise ModelError('Stale or unauthorized data handle')
-        if kind == 'publish':
-            if self.published or coverage(self.written, len(self.destination)) != coverage(command.detail, len(self.destination)):
-                raise ModelError('Incomplete or duplicate publication')
-            self.published = True
-            self.reply(command, 'published')
-            return
         if kind not in ('read', 'write'):
             raise ModelError('Unknown byte access')
         storage = self.source if kind == 'read' else self.destination
-        start, stop = command.offset, command.offset + command.nbytes
-        if not 0 <= start < stop <= len(storage):
+        if storage is None or any(not 0 <= a < b <= len(storage) for a, b in command.ranges):
             raise ModelError('Byte access exceeds binding')
-        if kind == 'write' and (not isinstance(command.detail[1], bytes) or len(command.detail[1]) != command.nbytes):
+        size = sum(b-a for a, b in command.ranges)
+        if kind == 'write' and (not isinstance(command.data, bytes) or len(command.data) != size):
             raise ModelError('Write payload differs from declared size')
         profile = self.read_service if kind == 'read' else self.write_service
-        event = self.service.start(kind, kind, command.nbytes, ceil(command.nbytes / profile['throughput']),
-                                   profile['latency'], self.cycle)
+        cycles = sum(ceil((b-a) / profile['throughput']) for a, b in command.ranges)
+        event = self.service.start(kind, kind, size, cycles, profile['latency'], self.cycle)
         if event is None:
             raise ModelError('Endpoint cannot meet Calendar access service')
         self.pending.append((event['complete'] + (self.read_delay if kind == 'read' else 0), command))
 
     def tick(self, cycle):
         for _, message in self.inputs(cycle):
-            if isinstance(message, Accepted):
-                self.accepted = cycle
-            elif isinstance(message, Completion):
+            if isinstance(message, Completion):
+                if self.receive_layout and message.status == 'success':
+                    if coverage(self.written, len(self.destination)) != coverage(
+                            self.receive_layout.valid_ranges, len(self.destination)):
+                        raise ModelError('Incomplete receive on successful completion')
+                    self.published = True
                 self.completion = message
             elif isinstance(message, Rejected):
                 if not message.retryable:
                     raise ModelError(message.reason)
                 self.arrival = cycle + 2
+                self.submitted = False
             elif isinstance(message, DataAccess):
                 try:
                     self.access(message)
                 except ModelError as exc:
                     self.reply(message, 'fault', str(exc))
-        if cycle == self.arrival:
+        if cycle == self.arrival and not self.submitted:
             self.send('communit', self.submission)
+            self.submitted = True
         for end, command in self.pending[:]:
             if end > cycle:
                 continue
             self.pending.remove((end, command))
-            start, stop = command.offset, command.offset + command.nbytes
             if command.kind == 'read':
-                self.reply(command, 'read_done', self.source[start:stop])
+                self.reply(command, 'read_done', b''.join(self.source[a:b] for a, b in command.ranges))
             else:
-                self.written.append((start, stop))
-                self.destination[start:stop] = command.detail[1]
+                offset = 0
+                for a, b in command.ranges:
+                    self.written.append((a, b))
+                    self.destination[a:b] = command.data[offset:offset + b-a]
+                    offset += b-a
                 self.reply(command, 'write_done')
 
     def is_idle(self):
@@ -112,7 +99,7 @@ class ByteEndpoint(Component):
 
     def next_event(self):
         times = [end for end, _ in self.pending]
-        if self.accepted is None and self.completion is None and self.arrival > self.cycle:
+        if not self.submitted and self.completion is None and self.arrival > self.cycle:
             times.append(self.arrival)
         return min(times, default=None)
 
@@ -138,12 +125,11 @@ def build_demo(mode, *, buffer_bytes=64, read_delay=0):
     unit = CommUnit(json.loads(json.dumps(installation)), platform)
     clients = {}
     for node, (send, receive) in layouts.items():
-        request = CommRequest(f'req:{node}', (node, 0, 'COMM.SUBMIT'), opcode, 1, tuple(layouts),
-            installation['version'],
-            SendDesc(TileBinding('X', 1, 'LocalTileReg', (node, 0)), send) if send else None,
-            ReceiveDesc(TileBinding('Y', 1, 'SharedTileReg', (node,)), receive) if receive else None)
+        request = request_for(opcode, send, receive)
         source = bytes((node * 19 + i) % 256 for i in range(512)) if send else b''
-        clients[node] = ByteEndpoint(node, request, source, node * 11, read_delay=read_delay)
+        clients[node] = ByteEndpoint(node, request, source, node * 11, receive=receive,
+                                     read_service=platform['read_service'],
+                                     write_service=platform['write_service'], read_delay=read_delay)
     return unit, clients
 
 

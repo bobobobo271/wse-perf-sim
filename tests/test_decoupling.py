@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 from api import simulate, simulate_core
 from config import default_config
-from runtime.communication import CommRequest, DataAccess, DataReply
+from runtime.communication import CommRequest, DataAccess
 from runtime.runner import Runner
 from examples.communication.fake_communit import FakeCommUnit
-from examples.communication.streaming import ByteEndpoint, build_demo
+from examples.communication.streaming import ByteEndpoint
 from test_model import ROOT, fixture, op
 
 
@@ -43,23 +43,15 @@ assert not any(k.startswith(('models.noc', 'models.memory')) for k in sys.module
 
     @staticmethod
     def copy_script(sub, peer):
-        r = sub.request
-        reply = yield DataAccess(r.request_id, 'prepare', -1,
-            detail=(r.send,r.receive,dict(throughput=32,latency=2),dict(throughput=32,latency=2)))
-        src,dst=reply.detail
-        reply = yield DataAccess(r.request_id,'read',0,src,0,16)
-        data=reply.detail
-        yield DataAccess(r.request_id,'write',1,dst,0,16,(sub.node,data))
-        yield DataAccess(r.request_id,'publish',-2,dst,detail=((0,16),))
+        reply = yield DataAccess(sub.token, 'read', 0, ((0,16),), sub.node)
+        yield DataAccess(sub.token, 'write', 1, ((0,16),), sub.node, reply.detail)
 
-    def test_fake_peer_uses_prepare_read_write_publish_contract(self):
-        from runtime.communication import SendDesc, ReceiveDesc, SendLayout, ReceiveLayout, TileBinding
-        request=CommRequest('test',(),1,0,(0,),'test',
-            SendDesc(TileBinding('x',1,'LocalTileReg',(0,0)),SendLayout(0,1,16,16,'OUT',0,16,0,True)),
-            ReceiveDesc(TileBinding('y',1,'SharedTileReg',(0,)),ReceiveLayout('OUT',16,0,((0,16),))))
-        source=bytes(range(16))
-        peer=FakeCommUnit(self.copy_script)
-        client=ByteEndpoint(0,request,source,0)
+    def test_fake_peer_uses_read_write_contract(self):
+        from runtime.communication import ReceiveLayout
+        request = CommRequest(opcode=1, route_bits=0, send_bytes=16, expected_receive_bytes=0)
+        source = bytes(range(16))
+        peer = FakeCommUnit(self.copy_script)
+        client = ByteEndpoint(0, request, source, 0, receive=ReceiveLayout('OUT',16,0,((0,16),)))
         Runner({'communit':peer,client.name:client}).run()
         self.assertEqual(bytes(client.destination),source)
         self.assertTrue(client.published)

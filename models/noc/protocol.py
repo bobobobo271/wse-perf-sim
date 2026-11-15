@@ -1,5 +1,4 @@
-"""Public protocol exports; implementations import runtime.communication."""
-from runtime.communication import (CommRequest, CommSubmit, Accepted, Rejected, Completion,
-    DataAccess, DataReply, TileBinding, SendDesc, ReceiveDesc, SendLayout, ReceiveLayout,
-    digest, coverage, request_from_dict)
+"""Public exports for the common communication contract."""
+from runtime.communication import (CommRequest, CommSubmit, Completion, DataAccess, DataReply,
+                                   Rejected, SendLayout, ReceiveLayout, digest, coverage)
 from config import platform_spec

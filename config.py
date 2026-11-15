@@ -106,10 +106,10 @@ def validate_config(c):
 
 # Values retain their provenance; none of the pending values are hardware calibration.
 WSE_PARAMETERS = {
-    'core_clock_hz': (1400000000, 'Hz', 'documented'),
+    'core_clock_hz': (1650000000, 'Hz', 'configured'),
     'noc_clock_hz': (2000000000, 'Hz', 'documented'),
     'link_bytes_per_cycle': (64, 'B/NoC cycle/direction', 'documented'),
-    'header_bytes': (12, 'B/flit', 'pending'),
+    'header_bytes': (12, 'B/flit', 'configured'),
     'hop_cycles': (1, 'NoC cycle', 'pending'),
     'tx_cdc_cycles': (2, 'NoC cycle', 'pending'),
     'rx_cdc_cycles': (2, 'NoC cycle', 'pending'),
@@ -118,7 +118,6 @@ WSE_PARAMETERS = {
     'guard_cycles': (1, 'NoC cycle', 'pending'),
     'slot_cycles': (1024, 'NoC cycle', 'pending'),
     'slots_per_period': (8, 'slots', 'pending'),
-    'epoch_bits': (8, 'bit', 'pending'),
     'sram_capacity_bytes': (384 * 1024 * 1024, 'B/core', 'documented'),
     'sram_bandwidth': (1000000000000, 'B/s/core, shared read/write', 'configured'),
     'sram_read_startup_ns': (100, 'ns', 'configured'),
@@ -135,6 +134,8 @@ def wse_config():
                          source=('WSE whitepaper v0.2' if s == 'documented' else
                                  'user-confirmed first-version model; 2026-11-13'))
                 for k, (v, u, s) in WSE_PARAMETERS.items()}
+    for key in ('core_clock_hz', 'header_bytes'):
+        c['wse'][key]['source'] = 'user-specified simulator configuration'
     # WSE targets are whole-core budgets, statically partitioned across PEs.
     # Keep default_config's synthetic per-PE profile unchanged.
     for name in ('cube', 'vector', 'exp', 'cast', 'reduce'):
@@ -157,6 +158,7 @@ def wse_config():
 
 def validate_wse(c):
     p = c['wse']
+    p.pop('epoch_bits', None)  # Read existing profile files that still have this field.
     if set(p) != set(WSE_PARAMETERS):
         raise ModelError('WSE parameter keys differ from the supported profile')
     zero_ok = {'tx_cdc_cycles', 'rx_cdc_cycles', 'alignment_cycles', 'arm_cycles',

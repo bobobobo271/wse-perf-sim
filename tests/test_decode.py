@@ -67,7 +67,8 @@ class DecodeReplayTests(unittest.TestCase):
         slow_config = copy.deepcopy(config)
         slow_config['hbm'] = dict(bandwidth_bytes_per_second=256e9, startup_ns=0)
         slow = simulate_fixture(capture, slow_config)
-        for report, cycles in ((fast, 2), (slow, 3)):
+        # At 1.65 GHz, 256 GB/s split across two cores gives about 77.6 B/cycle each.
+        for report, cycles in ((fast, 2), (slow, 4)):
             first, second = report['hbm_events']
             self.assertEqual(first['start_cycle'], second['start_cycle'])
             self.assertEqual(first['end_cycle'], second['end_cycle'])

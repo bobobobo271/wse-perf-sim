@@ -121,6 +121,17 @@ class HBMDone:
 
 
 @dataclass(frozen=True)
+class OpenTileStream:
+    submit: object
+    wait: object
+
+
+@dataclass(frozen=True)
+class TileStreamReady:
+    submit: object
+
+
+@dataclass(frozen=True)
 class TileDataAccess:
     submit: object
     wait: object

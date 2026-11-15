@@ -15,7 +15,7 @@ def build_report(sim):
     instruction_events = []
     milestones = {'admitted', 'admission_received', 'allocation_request', 'allocated', 'issue', 'received', 'operands_ready',
                   'compute_start', 'compute_end', 'writeback_start', 'writeback_end',
-                  'complete', 'rob_complete', 'retire', 'accepted', 'source_read_complete'}
+                  'complete', 'rob_complete', 'retire', 'accepted', 'source_read_complete', 'wait_start'}
     # complete 是发送 Complete 的时刻，rob_complete 是 ROB 收到消息的时刻，retire 是按序退休。
     # 三者分别保留，便于区分执行延迟、消息传递和退休等待。
     for name, component in sorted(sim.components.items()):

@@ -21,7 +21,7 @@ PHASES = (
     ('writeback', 'writeback_start', 'writeback_end'),
 )
 COMM_PHASES = {
-    'comm.submit': (('request submission + acceptance', 'received', 'complete'),),
+    'comm.submit': (('request submission', 'received', 'complete'),),
     'comm.wait': (('completion token wait', 'received', 'complete'),),
 }
 IDENTITY = ('op_id', 'ir_op', 'core', 'pe', 'execution_component')
@@ -93,12 +93,16 @@ def to_perfetto(events, cycle_ns=1.0):
     for (core, unit, role), commands in sorted(groups.items()):
         active, free, count = [], [], 0
 
+        def start_event(instruction):
+            times = instruction['times']
+            return next(field for field in ('wait_start', 'received', 'issue') if field in times)
+
         def interval(instruction):
             times = instruction['times']
             if role == 'execution':
                 # Old control/view logs have no receive event. Preserve their
                 # recorded issue timestamp and identify the fallback in args.
-                return times.get('received', times['issue']), times['complete']
+                return times[start_event(instruction)], times['complete']
             return times['complete'], times['retire']
 
         for instruction in sorted(commands, key=lambda i: (interval(i)[0], str(i['identity']['op_id']))):
@@ -133,8 +137,10 @@ def to_perfetto(events, cycle_ns=1.0):
             label = f'#{identity["op_id"]} {identity["ir_op"]}'
             if role == 'execution':
                 span(label, begin, finish, 'ssnpu.instruction',
-                     {'interval_start_event': 'received' if 'received' in times else 'issue'})
+                     {'interval_start_event': start_event(instruction)})
                 phases = COMM_PHASES.get(identity['ir_op'], PHASES)
+                if identity['ir_op'] == 'comm.wait' and 'wait_start' in times:
+                    phases = (('completion token wait', 'wait_start', 'complete'),)
             else:
                 span(label + ' / ROB', begin, finish, 'ssnpu.rob')
                 phases = (('ROB notification', 'complete', 'rob_complete'),

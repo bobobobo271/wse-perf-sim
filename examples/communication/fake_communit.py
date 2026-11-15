@@ -4,7 +4,7 @@ script(submission, peer) yields DataAccess. It resumes only after the matching
 access ID/event returns. This fake has no routing or Calendar implementation.
 """
 from runtime.component import Component
-from runtime.communication import CommSubmit, Accepted, Completion, DataReply
+from runtime.communication import CommSubmit, Completion, DataReply
 
 
 class FakeCommUnit(Component):
@@ -24,7 +24,7 @@ class FakeCommUnit(Component):
         else:
             if command.token != token:
                 raise ValueError('Script token differs from request')
-            event = dict(prepare='prepared', read='read_done', write='write_done', publish='published')[command.kind]
+            event = f'{command.kind}_done'
             self.jobs[token] = sub, steps, (command.access_id, event)
             self.send(sub.endpoint, command)
 
@@ -32,11 +32,10 @@ class FakeCommUnit(Component):
         for _, message in self.inputs(cycle):
             self.history.append((cycle, message))
             if isinstance(message, CommSubmit):
-                token = message.request.request_id
+                token = message.token
                 if token in self.jobs:
                     raise ValueError('Duplicate test request')
                 self.jobs[token] = message, iter(self.script(message, self)), None
-                self.send(message.endpoint, Accepted(token))
                 self.proceed(token)
             elif isinstance(message, DataReply):
                 if message.event == 'fault':

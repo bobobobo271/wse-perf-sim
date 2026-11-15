@@ -50,9 +50,9 @@ class CalendarTests(unittest.TestCase):
             waits = [rows[f'comm:{phase}:{core}:wait']['complete']]
             self.assertGreater(rows[f'consume{core}']['issue'], max(waits))
         for e in report['noc']['events']:
-            if e['kind']=='published':
+            if e['kind']=='completion' and e['remote_received']:
                 writes = [w['cycle'] for w in report['noc']['events'] if w['kind']=='write_visible' and w['phase']==e['phase'] and w['node']==e['node']]
-                self.assertGreater(e['cycle'], max(writes))
+                self.assertGreaterEqual(e['cycle'], max(writes))
 
     def test_capacity_checked_before_communication(self):
         self.config['parameters']['shared_capacity']['value'] = 700
@@ -66,6 +66,12 @@ class CalendarTests(unittest.TestCase):
         compiled = compile_plan(self.plan,self.config)
         self.config['wse']['link_bytes_per_cycle']['value'] = 32
         with self.assertRaisesRegex(ModelError,'platform mismatch'):
+            self.run_model(compiled)
+
+    def test_compiled_plan_rejects_changed_offset_even_with_same_operands(self):
+        compiled = compile_plan(self.plan, self.config)
+        compiled['phases'][0]['nodes'][0]['send']['src_offset'] += 1
+        with self.assertRaisesRegex(ModelError, 'layout differs'):
             self.run_model(compiled)
 
     def test_clock_tick_order_independent(self):
@@ -86,7 +92,8 @@ class CalendarTests(unittest.TestCase):
         links = [e for e in report['noc']['events'] if e['kind']=='link']
         self.assertTrue(links)
         for e in links:
-            self.assertEqual(e['payload_bytes']+e['header_bytes']+e['padding_bytes'],64)
+            self.assertEqual(e['wire_bytes'],64)
+            self.assertTrue(0 < e['payload_bytes'] <= 52)
             self.assertAlmostEqual(e['end_ns']-e['time_ns'],0.5)
 
     def test_transit_nodes_do_not_receive_tiles(self):
@@ -98,10 +105,10 @@ class CalendarTests(unittest.TestCase):
     def test_perfetto_submit_wait_export(self):
         from analysis.perfetto import to_perfetto,to_pftrace
         report=self.run_model()
-        names={e['name'] for e in to_perfetto(report['instruction_events'],cycle_ns=5/7)['traceEvents']}
-        self.assertIn('request submission + acceptance',names)
+        names={e['name'] for e in to_perfetto(report['instruction_events'],cycle_ns=1e9/self.config['wse']['core_clock_hz']['value'])['traceEvents']}
+        self.assertIn('request submission',names)
         self.assertIn('completion token wait',names)
-        self.assertGreater(len(to_pftrace(report['instruction_events'],cycle_ns=5/7)),0)
+        self.assertGreater(len(to_pftrace(report['instruction_events'],cycle_ns=1e9/self.config['wse']['core_clock_hz']['value'])),0)
 
     def test_larger_payload_preserves_allgather(self):
         self.plan=group_capture(self.path,(0,1,8,9),size=4096)

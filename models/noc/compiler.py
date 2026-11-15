@@ -5,8 +5,22 @@ from fractions import Fraction
 from math import ceil
 
 from errors import ModelError
-from runtime.communication import coverage, digest
+from runtime.communication import coverage, digest, request_for
 from models.noc.routing import integer, node_id, route_tree
+
+
+def storage_ranges(offset, size, base, row_bytes, stride, access_bytes):
+    """Map a flit's valid bytes to local accesses, including across padded rows."""
+    ranges = []
+    while size:
+        row, col = divmod(offset, row_bytes)
+        start = base + row * stride + col
+        stop = start + (size if stride == row_bytes else min(size, row_bytes - col))
+        for begin in range(start, stop, access_bytes):
+            ranges.append((begin, min(begin + access_bytes, stop)))
+        offset += stop - start
+        size -= stop - start
+    return ranges
 
 
 def compile_calendar(opcode, layouts, platform):
@@ -20,16 +34,9 @@ def compile_calendar(opcode, layouts, platform):
     payload = integer(p['link_bytes_per_cycle'] - p['header_bytes'], 'flit payload', 1)
     tx = integer(platform['tx_bytes'], 'TX capacity', 1)
     rx = integer(platform['rx_bytes'], 'RX capacity', 1)
-    chunk = min(integer(platform['access_bytes'], 'access size', 1), tx, rx)
+    access_bytes = integer(platform['access_bytes'], 'access size', 1)
     ratio = Fraction(p['noc_clock_hz'], p['core_clock_hz'])
-    # Both clocks meet every ratio.denominator core cycles. At those edges the
-    # read/NoC/write pipeline can use one repeatable relative schedule.
-    # Two queue handoffs in each direction through CommPort, plus one guard edge.
-    service = max(
-        ceil(chunk / integer(platform[k]['throughput'], k, 1))
-        + integer(platform[k]['latency'], k + ' latency') + 5
-        for k in ('read_service', 'write_service')
-    )
+    service = 1
     expected, remote, routes, segments = defaultdict(list), Counter(), {}, []
     if any(not isinstance(desc.recv_sym_base, str) or not desc.recv_sym_base
            for pair in layouts.values() for desc in pair if desc is not None):
@@ -58,7 +65,7 @@ def compile_calendar(opcode, layouts, platform):
             if dest is None or dest.recv_sym_base != send.recv_sym_base:
                 raise ModelError('Missing matching receive registration')
         routes[node] = dict(children=children, distance=distance)
-        max_network_cycles = max(max_network_cycles, p['tx_cdc_cycles'] + ceil(chunk / payload)
+        max_network_cycles = max(max_network_cycles, p['tx_cdc_cycles'] + 1
                                  + max(distance.values()) * p['hop_cycles'] + p['rx_cdc_cycles'] + p['guard_cycles'])
         for row in range(send.row_count):
             start = send.self_off + row * send.recv_row_stride
@@ -66,10 +73,21 @@ def compile_calendar(opcode, layouts, platform):
                 expected[target].append((start, start + send.row_bytes))
                 if target != node:
                     remote[target] += send.row_bytes
-            for offset in range(0, send.row_bytes, chunk):
-                segments.append(dict(source=node, targets=targets, nbytes=min(chunk, send.row_bytes - offset),
-                                     src=send.src_offset + row * send.src_row_stride + offset,
-                                     dst=start + offset))
+        total = send.row_bytes * send.row_count
+        if min(payload, total) > min(tx, rx):
+            raise ModelError('Endpoint buffers must hold one flit of valid data')
+        for offset in range(0, total, payload):
+            size = min(payload, total - offset)
+            src = storage_ranges(offset, size, send.src_offset, send.row_bytes,
+                                 send.src_row_stride, access_bytes)
+            dst = storage_ranges(offset, size, send.self_off, send.row_bytes,
+                                 send.recv_row_stride, access_bytes)
+            segments.append(dict(source=node, targets=targets, nbytes=size, src=src, dst=dst))
+            # One command/reply per flit, with local access cost for every span.
+            for ranges, key in ((src, 'read_service'), (dst, 'write_service')):
+                rate = integer(platform[key]['throughput'], key, 1)
+                latency = integer(platform[key]['latency'], key + ' latency')
+                service = max(service, sum(ceil((b-a) / rate) for a, b in ranges) + latency + 5)
     senders = set(routes)
     receivers = {node for node, (_, receive) in layouts.items() if receive is not None}
     if not (len(senders) == 1 or len(receivers) == 1):
@@ -83,8 +101,7 @@ def compile_calendar(opcode, layouts, platform):
         if not valid or coverage(expected[node], capacity) != valid:
             raise ModelError('Transfers do not cover the target valid ranges')
 
-    stride = ratio.denominator * ceil(max(service, ceil(max_network_cycles / ratio) + 1)
-                                     / ratio.denominator)
+    stride = max(service, ceil(max_network_cycles / ratio) + 1)
     tx_slots, rx_slots = Counter(), Counter()
     slot = 0
     for segment in segments:
@@ -101,21 +118,23 @@ def compile_calendar(opcode, layouts, platform):
                        write_cycle=(slot + 2) * stride, check_cycle=(slot + 3) * stride)
         # Fully expand relative link events offline. Runtime only adds align origin.
         route = routes[source]
+        start = ceil(segment['inject_cycle'] * ratio) + p['tx_cdc_cycles']
         segment['links'] = [dict(link=(parent, child), resource=f'link:{parent}->{child}',
-            flit=offset // payload, header_bytes=p['header_bytes'], padding_bytes=payload - min(payload, size-offset),
-            noc_cycle=int(segment['inject_cycle'] * ratio) + p['tx_cdc_cycles']
-                + route['distance'][parent] * p['hop_cycles'] + offset // payload,
-            payload_bytes=min(payload, size-offset), wire_bytes=p['link_bytes_per_cycle'])
-            for parent, children in route['children'].items() for child in children
-            for offset in range(0, size, payload)]
+            flit=slot, noc_cycle=start + route['distance'][parent] * p['hop_cycles'],
+            payload_bytes=size, wire_bytes=p['link_bytes_per_cycle'])
+            for parent, children in route['children'].items() for child in children]
+        segment['send_cycle'] = ceil((start + 1) / ratio) if segment['links'] else segment['inject_cycle']
         slot += 1
-    entries = {node: dict(send=asdict(send) if send else None, receive=asdict(receive) if receive else None)
+    entries = {node: request_for(opcode, send, receive)
                for node, (send, receive) in sorted(layouts.items())}
-    return dict(opcode=opcode, entries=entries, segments=segments, stride=stride)
+    layout_hashes = {node: digest([asdict(desc) if desc else None for desc in pair])
+                     for node, pair in layouts.items()}
+    return dict(opcode=opcode, entries=entries, layout_hashes=layout_hashes,
+                segments=segments, stride=stride)
 
 
 def make_installation(calendars, platform):
-    """Install reusable CalReg[opcode] profiles, independent of runtime epochs."""
+    """Install reusable CalReg[opcode] profiles, for sequential rounds."""
     profiles = {}
     for calendar in calendars:
         opcode = calendar['opcode']
@@ -124,5 +143,5 @@ def make_installation(calendars, platform):
         profiles[opcode] = calendar
     if not profiles:
         raise ModelError('No Calendar profiles to install')
-    body = dict(schema='wse-communit/2', platform_hash=digest(platform), calreg=profiles)
+    body = dict(schema='wse-communit/3', platform_hash=digest(platform), calreg=profiles)
     return dict(body, version=digest(body))

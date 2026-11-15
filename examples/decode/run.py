@@ -9,7 +9,6 @@ from analysis.pipeline import export_pipeline, export_resource_trace
 from analysis.perfetto import to_pftrace, to_perfetto
 from errors import ModelError
 from frontend.capture import TraceAdapter
-from config import platform_spec
 
 
 def export_communication(trace, output):
@@ -18,7 +17,7 @@ def export_communication(trace, output):
     requests = [i.raw['communication']['request'] for i in trace.instructions.values()
                 if i.raw['ir_op'] == 'comm.submit']
     for name, value in (('requests.json', requests), ('installation.json', trace.comm_installation),
-                        ('platform.json', platform_spec(trace.config))):
+                        ('platform.json', trace.comm_platform)):
         (directory/name).write_text(json.dumps(value, indent=2, allow_nan=False)+'\n')
 
 

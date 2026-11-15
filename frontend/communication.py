@@ -7,17 +7,22 @@ import json
 from pathlib import Path
 
 from errors import ModelError
-from runtime.communication import (ReceiveDesc, ReceiveLayout, SendDesc, SendLayout,
-    CommRequest, TileBinding)
-from runtime.communication import digest
+from runtime.communication import ReceiveLayout, SendLayout, digest, request_for
 from models.noc.routing import integer, multicast_routes, route_bitmap, route_tree
 from records import Instruction
 from tiles import nbytes, version_key
 
 
-def bind(obj, owner):
-    return TileBinding(obj['object_id'], obj['version'], obj['memory_space'],
-                       (owner.core,) if obj['memory_space'] == 'SharedTileReg' else (owner.core, owner.pe))
+def send_layout(spec):
+    spec = dict(spec)
+    if 'nbytes' in spec:
+        size = spec.pop('nbytes')
+        return SendLayout(0, 1, size, size, 'OUTPUT', 0, size, **spec)
+    return SendLayout(**spec)
+
+
+def receive_layout(spec):
+    return ReceiveLayout(**(dict(recv_sym_base='OUTPUT') | spec))
 
 
 def _attach_compiled_plan(trace, plan):
@@ -33,10 +38,11 @@ def _attach_compiled_plan(trace, plan):
     objects = {version_key(o): o for i in original for o in i.raw.get('outputs', []) if o['kind'] == 'tile'}
     for instruction in original:
         instruction.age *= 3 * len(phases) + 1
-    requests = []
     previous = set()
     for number, phase in enumerate(phases):
-        name, opcode, epoch = (phase[k] for k in ('name', 'opcode', 'epoch'))
+        name, opcode = phase['name'], phase['opcode']
+        calreg = plan['installation']['calreg']
+        layout_hashes = calreg.get(opcode, calreg.get(str(opcode)))['layout_hashes']
         members = tuple(sorted(e['core'] for e in phase['nodes']))
         if len(members) != len(set(members)):
             raise ModelError('One streaming binding per node is required')
@@ -55,7 +61,7 @@ def _attach_compiled_plan(trace, plan):
                     raise ModelError('Streaming source version has no preceding producer')
                 if source['memory_space'] not in ('SharedTileReg', 'LocalTileReg', 'TileReg'):
                     raise ModelError('Streaming source must be a tile register object')
-                send = SendDesc(bind(source, owner), SendLayout(**spec))
+                send = send_layout(spec)
             if 'receive' in entry:
                 spec = dict(entry['receive'])
                 target = dict(spec.pop('target'), producer=ids['wait'])
@@ -68,22 +74,26 @@ def _attach_compiled_plan(trace, plan):
                     raise ModelError('Streaming source and destination need distinct storage')
                 spec.setdefault('capacity', nbytes(target))
                 spec.setdefault('valid_ranges', ((0, nbytes(target, target['shape'])),))
-                receive = ReceiveDesc(bind(target, owner), ReceiveLayout(**spec))
+                receive = receive_layout(spec)
                 targets[key] = target
                 for instruction in original:
                     for operand in instruction.raw.get('inputs', []):
                         if operand['kind'] == 'tile' and version_key(operand) == key:
                             operand['producer'] = ids['wait']
-            request = CommRequest(f'{name}/{node}', (owner.block, owner.raw['thread_id'], owner.id),
-                                    opcode, epoch, members, '', send, receive)
+            layout_hash = digest([asdict(desc) if desc else None for desc in (send, receive)])
+            if layout_hash != layout_hashes.get(node, layout_hashes.get(str(node))):
+                raise ModelError('Tile layout differs from the compiled Calendar')
+            token = f'{name}/{node}'
+            request = request_for(opcode, send, receive)
             for offset, kind in enumerate(('submit', 'wait'), 1):
                 raw = dict(owner.raw, ir_op=f'comm.{kind}', op_id=ids[kind],
                            inputs=[source] if kind == 'submit' and source else [],
                            outputs=[target] if kind == 'wait' and target else [],
                            memory_accesses=[], parameters={}, ssnpu=dict(owner.raw['ssnpu'], shared_inputs=[]),
-                           communication=dict(phase=name, token=request.request_id, reserve_for=ids['wait'],
-                                              request=asdict(request)))
-                requests.append(raw['communication']['request'])
+                           communication=dict(phase=name, token=token, reserve_for=ids['wait'],
+                                              request=request, send_layout=send,
+                                              receive_layout=receive,
+                                              services=(platform['read_service'], platform['write_service'])))
                 deps = previous | set(entry.get('after', [])) | ({ids['submit']} if kind == 'wait' else {owner.id})
                 trace.add(Instruction(ids[kind], node, owner.pe, owner.task, owner.block,
                                       owner.age + 3 * number + offset, raw, deps=deps, sync=set(owner.sync)))
@@ -98,8 +108,6 @@ def _attach_compiled_plan(trace, plan):
     trace.calendar_phases = phases
     trace.comm_platform = platform
     trace.comm_installation = copy.deepcopy(plan['installation'])
-    for request in requests:
-        request['version'] = trace.comm_installation['version']
 
 
 def compile_plan(plan, config):
@@ -109,12 +117,8 @@ def compile_plan(plan, config):
     if plan.get('schema') != 'wse-communication/stream-v1' or plan.get('non_speculative') is not True:
         raise ModelError('Expected wse-communication/stream-v1 with non_speculative=true; migrate legacy plans')
     platform = platform_spec(config, **plan['buffers'])
-    calendars, identities = [], set()
+    calendars = []
     for phase in plan['phases']:
-        identity = phase['opcode'], integer(phase['epoch'], 'epoch')
-        if identity[1] >= 1 << platform['network']['epoch_bits'] or identity in identities:
-            raise ModelError('Invalid or repeated opcode/epoch within launch')
-        identities.add(identity)
         layouts = {}
         for entry in phase['nodes']:
             if entry['core'] in layouts:
@@ -123,16 +127,16 @@ def compile_plan(plan, config):
             if 'send' in entry:
                 spec = dict(entry['send'])
                 spec.pop('source_version')
-                send = SendLayout(**spec)
+                send = send_layout(spec)
             if 'receive' in entry:
                 spec = dict(entry['receive'])
                 target = spec.pop('target')
                 spec.setdefault('capacity', nbytes(target))
                 spec.setdefault('valid_ranges', ((0, nbytes(target, target['shape'])),))
-                receive = ReceiveLayout(**spec)
+                receive = receive_layout(spec)
             layouts[entry['core']] = (send, receive)
         calendars.append(compile_calendar(phase['opcode'], layouts, platform))
-    plan.update(schema='wse-communication/compiled-v1', installation=make_installation(calendars, platform))
+    plan.update(schema='wse-communication/compiled-v2', installation=make_installation(calendars, platform))
     return plan
 
 
@@ -152,7 +156,7 @@ def attach_plan(trace, plan):
         raise ModelError('Communication requires a WSE configuration')
     trace.source_hashes['communication_plan'] = hashlib.sha256(data).hexdigest()
     trace.communication_plan = copy.deepcopy(plan)
-    if plan.get('schema') != 'wse-communication/compiled-v1':
+    if plan.get('schema') != 'wse-communication/compiled-v2':
         plan = compile_plan(plan, trace.config)
     if plan.get('non_speculative') is not True:
         raise ModelError('Communication requires non_speculative=true')
@@ -163,7 +167,7 @@ def operation_id(phase, core, kind):
     return f'comm:{phase}:{core}:{kind}'
 
 
-def allgather_group(sources, targets, owners, shard_bytes, *, name='allgather', epoch=0, opcode=1):
+def allgather_group(sources, targets, owners, shard_bytes, *, name='allgather', opcode=1):
     """Lower AllGather to one gather and tree broadcasts using the sole v1 ABI.
 
     Each round has at most one send/receive per participant. No partially
@@ -188,12 +192,12 @@ def allgather_group(sources, targets, owners, shard_bytes, *, name='allgather', 
         if node == root:
             entry['receive'] = receive(node, total-shard_bytes)
         nodes.append(entry)
-    phases = [dict(name=name + ':gather', opcode=opcode, epoch=epoch, nodes=nodes)]
+    phases = [dict(name=name + ':gather', opcode=opcode, nodes=nodes)]
     for index, bits in enumerate(multicast_routes(root, members[1:]) if len(members)>1 else [], 1):
         _, landing, _ = route_tree(root, bits)
         nodes = [dict(core=root, owner=owners[root], send=send(targets[root], total, 0, bits))]
         nodes += [dict(core=node, owner=owners[node], receive=receive(node, total)) for node in sorted(landing)]
-        phases.append(dict(name=f'{name}:broadcast{index}', opcode=opcode+index, epoch=epoch, nodes=nodes))
+        phases.append(dict(name=f'{name}:broadcast{index}', opcode=opcode+index, nodes=nodes))
     return dict(schema='wse-communication/stream-v1', non_speculative=True,
                 buffers=dict(access_bytes=256, tx_bytes=512, rx_bytes=512), phases=phases)
 

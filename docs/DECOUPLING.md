@@ -10,7 +10,7 @@ assert report['total_cycles'] == 23
 
 `models/ssnpu/system.py` 仅装配核组件。核只导入 `runtime.communication` 和 `runtime.memory` 的公共消息，不导入 NoC、路由、时隙编译器或存储后端。`simulate_core` 要求配置不包含 HBM；带通信指令时注入 `comm_backend`，带 WSE SRAM 访问时注入 `memory_backends` 组件映射。缺少后端明确报错。
 
-`examples/communication/fake_communit.py` 是脚本后端，依次发送 DataAccess，等匹配的 DataReply 再推进。`tests/test_decoupling.py` 验证真实核连接假后端的准备、读、写、发布、完成和消费者唤醒。该假后端无需路由与 Calendar。
+`examples/communication/fake_communit.py` 是脚本后端，依次发送 DataAccess，等匹配的 DataReply 再推进。`tests/test_decoupling.py` 验证真实核连接假后端的核内准备、读写、完成和消费者唤醒。该假后端无需路由与 Calendar。
 
 NoC 独立验证使用 `examples/communication/streaming.py` 中的 ByteEndpoint 假核。编译器先生成并安装配置，再运行真实 CommUnit。假核提供存储服务并独立核验目标字节和发布条件。远端 SRAM 的假核示例见 `examples/communication/memory.py`。
 

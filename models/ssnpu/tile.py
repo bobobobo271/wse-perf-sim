@@ -7,7 +7,7 @@ from runtime.protocol import (Access, AccessDone, Allocate, Allocated, Complete,
                        Dispatch, core_name, unit_name)
 from runtime.service import Service
 from errors import ModelError
-from runtime.protocol import TileDataAccess, ReleaseTileStream
+from runtime.protocol import OpenTileStream, TileDataAccess, ReleaseTileStream
 from models.ssnpu.stream_tile import StreamTileAccesses
 
 
@@ -111,6 +111,9 @@ class TileReg(Component):
     def tick(self, cycle):
         # 1. 收取请求和消费通知。Allocate/Access 入等待队列，在本组件内自主重试。
         for _, message in self.inputs(cycle):
+            if isinstance(message, OpenTileStream):
+                self.stream.open(self, message)
+                continue
             if isinstance(message, TileDataAccess):
                 try:
                     self.stream.start(self, message)
@@ -180,11 +183,11 @@ class TileReg(Component):
 
     def is_idle(self):
         return super().is_idle() and not (self.allocations or self.accesses or self.running
-                                               or self.stream.active or self.stream.running)
+                                               or self.stream.active or self.stream.running or self.stream.opening)
 
     def next_event(self):
         return min([end for _, end in self.running]
-                   + [entry[0] for entry in self.stream.running], default=None)
+                   + [entry[0] for entry in self.stream.running + self.stream.opening], default=None)
 
     def snapshot(self):
         return dict(super().snapshot(), allocations=[r.request for r in self.allocations],
