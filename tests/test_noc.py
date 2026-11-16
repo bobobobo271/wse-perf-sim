@@ -54,6 +54,26 @@ class CalendarTests(unittest.TestCase):
                 writes = [w['cycle'] for w in report['noc']['events'] if w['kind']=='write_visible' and w['phase']==e['phase'] and w['node']==e['node']]
                 self.assertGreaterEqual(e['cycle'], max(writes))
 
+    def test_submit_and_wait_share_one_early_receive_allocation(self):
+        trace = TraceAdapter(self.path, self.config, self.plan)
+        report = Simulator(trace, self.config).run()
+        rows = {row['op_id']: row for row in report['timeline']}
+        checked = 0
+        for submit in trace.instructions.values():
+            if submit.raw['ir_op'] != 'comm.submit':
+                continue
+            wait = trace.instructions[submit.raw['communication']['reserve_for']]
+            for version in wait.outputs:
+                with self.subTest(submit=submit.id, version=version):
+                    allocations = [event for event in report['storage_events']
+                                   if event['action'] == 'allocate' and event['version'] == list(version)]
+                    self.assertEqual(len(allocations), 1)
+                    self.assertEqual(rows[submit.id]['allocated'], rows[wait.id]['allocated'])
+                    self.assertLess(allocations[0]['cycle'], rows[submit.id]['issue'])
+                    checked += 1
+        # The two-core plan receives once at the gather root and once at the broadcast peer.
+        self.assertEqual(checked, 2)
+
     def test_capacity_checked_before_communication(self):
         self.config['parameters']['shared_capacity']['value'] = 700
         with self.assertRaisesRegex(ModelError, 'Deadlock.*capacity'):
